@@ -341,7 +341,7 @@ function WloMapSVG({ neighborhoods, warehouses, result, zoom, onSelect }: {
         const r = 3 + (n.demand / maxDemand) * 7;
         const isUnserved = result?.unserved?.includes(n.id);
         return (
-          <g key={n.id} className="cursor-pointer" onClick={() => onSelect({ kind: 'demand', id: n.id, label: n.id, detail: `Demand ${n.demand} units${isUnserved ? ' · currently unserved' : ' · assigned to the lowest-cost feasible warehouse'}`)}>
+          <g key={n.id} className="cursor-pointer" onClick={() => onSelect({ kind: 'demand', id: n.id, label: n.id, detail: `Demand ${n.demand} units${isUnserved ? ' · currently unserved' : ' · assigned to the lowest-cost feasible warehouse'}` })}>
             <title>{`${n.id}: demand ${n.demand}${isUnserved ? ' (unserved)' : ''}`}</title>
             <circle cx={toX(n.x)} cy={toY(n.y)} r={r + 4} fill="#3b82f6" fillOpacity="0.05" />
             <circle cx={toX(n.x)} cy={toY(n.y)} r={r}
@@ -358,7 +358,7 @@ function WloMapSVG({ neighborhoods, warehouses, result, zoom, onSelect }: {
         const isOpen = openIds.has(w.id);
         const u = result?.utilization?.find(x => x.id === w.id);
         return (
-          <g key={w.id} className="cursor-pointer" onClick={() => onSelect({ kind: 'warehouse', id: w.id, label: w.name || w.id, detail: `${isOpen ? 'Open' : 'Candidate'} warehouse · capacity ${w.capacity}${u ? ` · ${Math.round(u.u * 100)}% utilized` : ''}`)}>
+          <g key={w.id} className="cursor-pointer" onClick={() => onSelect({ kind: 'warehouse', id: w.id, label: w.name || w.id, detail: (isOpen ? 'Open' : 'Candidate') + ' warehouse · capacity ' + w.capacity + (u ? ' · ' + Math.round(u.u * 100) + '% utilized' : '') })}>
             <title>{`${w.name || w.id}: ${isOpen ? 'open' : 'candidate'}, capacity ${w.capacity}`}</title>
             <circle cx={toX(w.x)} cy={toY(w.y)} r={isOpen ? 14 : 10}
               fill={isOpen ? '#3b82f6' : '#1e1e2e'}
