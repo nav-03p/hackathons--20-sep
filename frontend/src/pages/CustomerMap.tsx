@@ -25,14 +25,60 @@ export function dockList(plan: FulfillPlan, demo: FulfillDemo, order: FulfillOrd
   }).sort((p, q) => p.km - q.km);
 }
 
-const ll = (p: { x: number; y: number }): L.LatLngExpression => {
-  if (p.x >= 10 && p.x <= 30 && p.y >= 60 && p.y <= 90) {
+const KNOWN_BENGALURU_COORDS: Record<string, [number, number]> = {
+  'whitefield': [12.9698, 77.7499],
+  'whitefield dc': [12.9750, 77.7400],
+  'peenya': [13.0285, 77.5197],
+  'peenya hub': [13.0300, 77.5250],
+  'hosur': [12.8452, 77.6602],
+  'hosur road depot': [12.8452, 77.6602],
+  'hosur road': [12.8452, 77.6602],
+  'electronic city': [12.8452, 77.6602],
+  'hebbal': [13.0358, 77.5970],
+  'hebbal cross-dock': [13.0358, 77.5970],
+  'basavanagudi': [12.9410, 77.5750],
+  'basavanagudi hub': [12.9420, 77.5700],
+  'jayanagar': [12.9250, 77.5830],
+  'jayanagar dock': [12.9250, 77.5840],
+  'gandhi bazaar': [12.9340, 77.5712],
+  'gandhi bazaar depot': [12.9360, 77.5720],
+  'dvg road': [12.9290, 77.5690],
+  'dvg road point': [12.9270, 77.5680],
+  'south bangalore dc': [12.9150, 77.5760],
+  '9th block node': [12.9200, 77.5850],
+  'koramangala': [12.9352, 77.6245],
+  'indiranagar': [12.9784, 77.6408],
+  'hsr layout': [12.9121, 77.6446],
+  'marathahalli': [12.9591, 77.6974],
+  'btm layout': [12.9165, 77.6101],
+  'rajajinagar': [12.9982, 77.5530],
+  'malleshwaram': [13.0031, 77.5643],
+  'yelahanka': [13.1007, 77.5963],
+  'banashankari': [12.9255, 77.5468],
+};
+
+const ll = (p: { x: number; y: number; lat?: number; lng?: number; name?: string; id?: string }): L.LatLngExpression => {
+  if (p.lat != null && p.lng != null && p.lat >= 8 && p.lat <= 36 && p.lng >= 68 && p.lng <= 98) {
+    return [p.lat, p.lng];
+  }
+  const nameKey = (p.name || '').toLowerCase().trim();
+  if (KNOWN_BENGALURU_COORDS[nameKey]) {
+    return KNOWN_BENGALURU_COORDS[nameKey];
+  }
+  for (const [key, coords] of Object.entries(KNOWN_BENGALURU_COORDS)) {
+    if (nameKey.includes(key) || (nameKey.length > 3 && key.includes(nameKey))) {
+      return coords;
+    }
+  }
+  if (p.x >= 12.0 && p.x <= 14.0 && p.y >= 77.0 && p.y <= 78.5) {
     return [p.x, p.y];
   }
-  if (p.y >= 10 && p.y <= 30 && p.x >= 60 && p.x <= 90) {
+  if (p.y >= 12.0 && p.y <= 14.0 && p.x >= 77.0 && p.x <= 78.5) {
     return [p.y, p.x];
   }
-  return [12.82 + (p.y / 100) * 0.28, 77.48 + (p.x / 100) * 0.28];
+  const clampedX = Math.max(0, Math.min(100, p.x));
+  const clampedY = Math.max(0, Math.min(100, p.y));
+  return [12.82 + (clampedY / 100) * 0.28, 77.48 + (clampedX / 100) * 0.28];
 };
 
 const dot = (color: string, size = 12, border = '#fff') => new L.DivIcon({
@@ -65,8 +111,8 @@ export function CustomerMap({ plan, demo, order, assignments, areaOf, onClear }:
     if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; }
     const m = L.map(divRef.current, { zoomControl: true }).setView(ll(order), 12);
     mapRef.current = m;
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; CARTO &copy; OpenStreetMap contributors', maxZoom: 19,
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+      attribution: '&copy; Esri &copy; OpenStreetMap contributors', maxZoom: 16,
     }).addTo(m);
     const bounds: L.LatLngExpression[] = [ll(order)];
     docks.forEach(({ w, a, km, eta, optimal }) => {

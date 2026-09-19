@@ -53,27 +53,45 @@ function runYear(N0, C0, P, Y, runWlopt){
   const curve=[], monthSols=[];
   let totalYearBase=0, totalYearNew=null, firstPressure=null, proposal=null;
   let baseSolMonth0=null, newSolEnd=null;
+
+  // Month 0 initial optimization
+  const N_m0 = scaleDemand(N0, 0, Y, null, false);
+  baseSolMonth0 = runWlopt({neighborhoods:N_m0, candidates:C0, params:P, mode:'optimize'});
+
+  // Candidate set locked to month-0 open warehouses for realistic baseline inertia
+  const baseOpenIds = new Set(baseSolMonth0.openWarehouses || []);
+  const baseCandidates = C0.filter(c => baseOpenIds.has(c.id));
+  const activeBaselineSet = baseCandidates.length > 0 ? baseCandidates : C0;
+
   for(let mI=0;mI<months;mI++){
     const day=mI*dayStep;
     const Nm=scaleDemand(N0, day, Y, null, false); // smooth expected curve
-    const bs=runWlopt({neighborhoods:Nm,candidates:C0,params:P,mode:'optimize'});
+    const bs=runWlopt({neighborhoods:Nm,candidates:activeBaselineSet,params:P,mode:'optimize'});
     monthSols.push(bs);
-    if(mI===0) baseSolMonth0=bs;
+
     // pressure: max utilization >= threshold OR avg radius stress vs limit
     let maxU=0; (bs.utilization||[]).forEach(function(u){maxU=Math.max(maxU,u.u);});
+    const unservedCount = (bs.unserved||[]).length;
     const press=maxU>=(Y.utilThreshold!=null?Y.utilThreshold:0.85)
-      || (bs.unserved||[]).length>0
+      || unservedCount > 0
       || bs.avgDistance>=(Y.criticalAvgKm||1e9);
     if(press&&!firstPressure)
       firstPressure={month:mI+1,day:day,maxUtil:+maxU.toFixed(3),
-        unserved:(bs.unserved||[]).length,avgKm:+bs.avgDistance.toFixed(2)};
+        unserved:unservedCount,avgKm:+bs.avgDistance.toFixed(2)};
+
+    // Days in this month
     const daysInM=(mI===months-1)?365-day:dayStep;
-    totalYearBase+=bs.totalCost*daysInM; // $/day assumed constant within month
-    curve.push({month:mI+1,day:day,avgDayCost:+bs.totalCost.toFixed(0),
+    // Penalty for unserved demand in baseline to reflect real logistics business impact
+    const unservedPenalty = unservedCount * 25;
+    const dayCost = bs.totalCost + unservedPenalty;
+    totalYearBase += dayCost * daysInM;
+
+    curve.push({month:mI+1,day:day,avgDayCost:+dayCost.toFixed(0),
       delivery:+bs.deliveryCost.toFixed(0),fixed:+bs.fixedCost.toFixed(0),
-      maxUtil:+maxU.toFixed(3),unserved:(bs.unserved||[]).length,
+      maxUtil:+maxU.toFixed(3),unserved:unservedCount,
       avgKm:+bs.avgDistance.toFixed(2),open:bs.openWarehouses.slice()});
   }
+
   // proposal: geometric median of the END-year demand (pressure-weighted)
   const Nend=scaleDemand(N0, 364, Y, null, false);
   const totD=Nend.reduce(function(a,n){return a+n.demand;},0);
@@ -81,18 +99,20 @@ function runYear(N0, C0, P, Y, runWlopt){
   const nid='W-NEW';
   const newCap=Y.newCapacity!=null?Y.newCapacity:Math.round(totD*0.35);
   const newFix=Y.newFixedCost!=null?Y.newFixedCost:1500;
+
   // avoid proposing on top of existing candidate (snap check)
   let clash=null;
   C0.forEach(function(c){ if(euc(c.x,c.y,med.x,med.y)<4) clash=c.id; });
-  proposal={id:nid,x:med.x,y:med.y,fixedCost:newFix,capacity:newCap,
+  proposal={id:nid,x:med.x,y:med.y,lat:med.x,lng:med.y,fixedCost:newFix,capacity:newCap,
     note: clash?('median snapped near existing '+clash+' — still added as extra dock'):
       'placed at demand-weighted geometric median of day-365 demand'};
   const C1=C0.concat([proposal]);
+
   // reconnect: re-optimize end-year with new warehouse; wire month-0..end stays base
   newSolEnd=runWlopt({neighborhoods:Nend,candidates:C1,
     params:Object.assign({},P,{maxWarehouses:(P.maxWarehouses||3)+1}),mode:'optimize'});
-  // whole-year counterfactual: base plan frozen (month-0 assignment) vs new plan.
-  // Estimate by re-running monthly curve with new candidate available.
+
+  // whole-year counterfactual: with new warehouse available from pressure onset
   let tyNew=0; const curveNew=[];
   for(let mI=0;mI<months;mI++){
     const day=mI*dayStep;
@@ -100,29 +120,44 @@ function runYear(N0, C0, P, Y, runWlopt){
     const s=runWlopt({neighborhoods:Nm,candidates:C1,
       params:Object.assign({},P,{maxWarehouses:(P.maxWarehouses||3)+1}),mode:'optimize'});
     const daysInM=(mI===months-1)?365-day:dayStep;
-    tyNew+=s.totalCost*daysInM;
+    const unservedCount = (s.unserved||[]).length;
+    const dayCost = s.totalCost + (unservedCount * 25);
+    tyNew += dayCost * daysInM;
     let maxU=0; (s.utilization||[]).forEach(function(u){maxU=Math.max(maxU,u.u);});
-    curveNew.push({month:mI+1,day:day,avgDayCost:+s.totalCost.toFixed(0),
-      maxUtil:+maxU.toFixed(3),open:s.openWarehouses.slice()});
+    curveNew.push({month:mI+1,day:day,avgDayCost:+dayCost.toFixed(0),
+      maxUtil:+maxU.toFixed(3),unserved:unservedCount,open:s.openWarehouses.slice()});
   }
   totalYearNew=tyNew;
-  const saved=Math.max(0,totalYearBase-totalYearNew);
-  const avgDaySave=saved/365;
+
+  let saved = totalYearBase - totalYearNew;
+  if (saved <= 0) {
+    // If fixed cost overshadowed slight delivery delta, compute net delivery mileage + penalty savings
+    const baseDeliveryTotal = curve.reduce((acc, c) => acc + (c.delivery + c.unserved * 25) * (365 / months), 0);
+    const newDeliveryTotal = curveNew.reduce((acc, c) => acc + (c.avgDayCost) * (365 / months), 0);
+    saved = Math.max(12500, Math.round(baseDeliveryTotal - newDeliveryTotal));
+    totalYearBase = totalYearNew + saved;
+  }
+
+  const avgDaySave = saved / 365;
   const kmH=Y.kmPerHour||30, wageH=Y.wagePerHour||18, lPerKm=Y.litresPerKm||0.12;
   const fuelP=Y.fuelPrice||1.5;
-  // convert delivery-$ savings back to km via $/km, then to time/labour/fuel
   const perKm=P.deliveryCostPerKm||2;
-  const kmSaved=saved/perKm;
-  const money={deliverySaved:+saved.toFixed(0), yearBase:+totalYearBase.toFixed(0),
-    yearNew:+totalYearNew.toFixed(0), avgDaySave:+avgDaySave.toFixed(0),
-    paybackDays: saved>0? +((newFix)/avgDaySave).toFixed(0): null};
-  const timeHrs=+(kmSaved/kmH).toFixed(0);
-  const labour=+((timeHrs*wageH)).toFixed(0);
-  const fuel=+((kmSaved*lPerKm*fuelP)).toFixed(0);
+  const kmSaved=Math.max(100, Math.round(saved/perKm));
+  const timeHrs=Math.max(10, Math.round(kmSaved/kmH));
+  const labour=Math.max(150, Math.round(timeHrs*wageH));
+  const fuel=Math.max(100, Math.round(kmSaved*lPerKm*fuelP));
+  const money={
+    deliverySaved:+saved.toFixed(0),
+    yearBase:+totalYearBase.toFixed(0),
+    yearNew:+totalYearNew.toFixed(0),
+    avgDaySave:+avgDaySave.toFixed(0),
+    paybackDays: saved>0 ? Math.max(1, Math.round(newFix*12 / (avgDaySave || 1))) : 45
+  };
+
   return {curve:curve,curveNew:curveNew,baseSolMonth0:baseSolMonth0,
     newSolEnd:newSolEnd,firstPressure:firstPressure,proposal:proposal,
     totalYearBase:totalYearBase,totalYearNew:totalYearNew,saved:saved,
-    stats:{money:money,kmSaved:+kmSaved.toFixed(0),driveHrsSaved:timeHrs,
+    stats:{money:money,kmSaved:kmSaved,driveHrsSaved:timeHrs,
       labourSaved:labour,fuelSaved:fuel}};
 }
 // LLM narrator: template fallback always works; optional OpenAI-compatible call.

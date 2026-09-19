@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Search, Bell, ChevronDown, Menu, CheckCircle2, Zap } from 'lucide-react';
+import { Search, Bell, ChevronDown, Menu, CheckCircle2, Zap, Sun, Moon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Page } from './Sidebar';
 import { useStore } from '@/lib/store';
@@ -11,7 +11,7 @@ export function TopNav({ onMenuOpen, currentPage, onLogout }: {
 }) {
   const [notifOpen, setNotifOpen] = useState(false);
   const [userOpen, setUserOpen] = useState(false);
-  const { companyName, logout } = useStore();
+  const { companyName, logout, theme, toggleTheme } = useStore();
   const initial = (companyName || 'Account').trim().charAt(0).toUpperCase();
 
   const pageLabels: Partial<Record<Page, string>> = {
@@ -62,6 +62,16 @@ export function TopNav({ onMenuOpen, currentPage, onLogout }: {
           className="w-44 pl-8 pr-3 py-1.5 rounded text-xs bg-[#111118] border border-[#1e1e2e] text-[#a0a0b0] placeholder-[#3a3a50] focus:outline-none focus:border-blue-500/40 transition-colors"
         />
       </div>
+
+      {/* Theme Toggle */}
+      <button
+        onClick={toggleTheme}
+        title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+        className="w-8 h-8 flex items-center justify-center rounded hover:bg-[#1a1a24] text-[#6b6b80] hover:text-[#c0c0d0] transition-colors"
+        aria-label="Toggle theme"
+      >
+        {theme === 'dark' ? <Sun size={15} className="text-amber-400" /> : <Moon size={15} className="text-blue-500" />}
+      </button>
 
       {/* Notifications */}
       <div className="relative">

@@ -54,6 +54,9 @@ type Ctx = {
   nb: NB[]; wh: WH[]; loaded: boolean; loading: boolean;
   token: string | null; companyId: string | null; companyName: string | null;
   prefs: ColorPrefs;
+  theme: 'dark' | 'light';
+  setTheme: (t: 'dark' | 'light') => void;
+  toggleTheme: () => void;
   loadDemo: () => Promise<void>;
   loadBengaluru: () => Promise<void>;
   loadSynthetic: (size?: number, seed?: number, authToken?: string, warehouseCapacity?: number) => Promise<void>;
@@ -94,6 +97,39 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     try { return Object.assign({}, DEFAULT_PREFS, JSON.parse(localStorage.getItem('wlo_prefs') || '{}')); }
     catch { return DEFAULT_PREFS; }
   });
+  const [theme, setThemeState] = useState<'dark' | 'light'>(() => {
+    return (localStorage.getItem('wlo_theme') as 'dark' | 'light') || 'dark';
+  });
+
+  const setTheme = useCallback((nextTheme: 'dark' | 'light') => {
+    setThemeState(nextTheme);
+    localStorage.setItem('wlo_theme', nextTheme);
+    if (nextTheme === 'light') {
+      document.documentElement.classList.add('light');
+      document.documentElement.classList.remove('dark');
+      document.documentElement.setAttribute('data-theme', 'light');
+    } else {
+      document.documentElement.classList.add('dark');
+      document.documentElement.classList.remove('light');
+      document.documentElement.setAttribute('data-theme', 'dark');
+    }
+  }, []);
+
+  const toggleTheme = useCallback(() => {
+    setTheme(theme === 'dark' ? 'light' : 'dark');
+  }, [theme, setTheme]);
+
+  React.useEffect(() => {
+    if (theme === 'light') {
+      document.documentElement.classList.add('light');
+      document.documentElement.classList.remove('dark');
+      document.documentElement.setAttribute('data-theme', 'light');
+    } else {
+      document.documentElement.classList.add('dark');
+      document.documentElement.classList.remove('light');
+      document.documentElement.setAttribute('data-theme', 'dark');
+    }
+  }, [theme]);
 
   const saveDataset = useCallback((nextNb: NB[], nextWh: WH[]) => {
     setNb(nextNb); setWh(nextWh); setLoaded(true);
@@ -198,7 +234,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   return (
     <StoreCtx.Provider value={{
       nb, wh, loaded, loading, token, companyId, companyName,
-      prefs, loadDemo, loadBengaluru, loadSynthetic, setData, login, signup, logout,
+      prefs, theme, setTheme, toggleTheme,
+      loadDemo, loadBengaluru, loadSynthetic, setData, login, signup, logout,
       setPrefs: setPref,
       addNeighborhood, updateNeighborhood, removeNeighborhood,
       addWarehouse, updateWarehouse, removeWarehouse,

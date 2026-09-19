@@ -2,14 +2,14 @@ import { useState } from 'react';
 import { Card, CardHeader, CardBody } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
-import { CheckCircle2, AlertCircle, Loader2, Palette, Map, Paintbrush } from 'lucide-react';
+import { CheckCircle2, AlertCircle, Loader2, Palette, Map, Paintbrush, Sun, Moon } from 'lucide-react';
 import { useStore } from '@/lib/store';
 import { api } from '@/lib/api';
 
 export function Settings() {
-  const { token, companyId, companyName, login, signup, logout, prefs, setPrefs } = useStore();
-  const [email, setEmail] = useState('planner@northstar.demo');
-  const [password, setPassword] = useState('northstar123');
+  const { token, companyId, companyName, login, signup, logout, prefs, setPrefs, theme, setTheme } = useStore();
+  const [email, setEmail] = useState('namit@gmail.com');
+  const [password, setPassword] = useState('12345678');
   const [company, setCompany] = useState('');
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
   const [loginLoading, setLoginLoading] = useState(false);
@@ -146,7 +146,16 @@ export function Settings() {
                 <label className="text-xs text-[#5a5a70] block mb-1.5">Password</label>
                 <input type="password" value={password} onChange={e => setPassword(e.target.value)}
                   className="w-full max-w-xs px-3 py-1.5 rounded text-xs bg-[#0d0d16] border border-[#1e1e2e] text-[#c0c0d0] font-mono focus:outline-none focus:border-blue-500/40" />
-                <div className="text-[9px] text-[#3a3a50] mt-1">Bengaluru 300: planner@karnataka300.demo / karnataka300 · Bengaluru 500: planner@karnataka500.demo / karnataka500</div>
+                <div className="text-[10px] text-[#4a4a60] mt-1 flex flex-wrap gap-2 items-center">
+                  <span>Demo account:</span>
+                  <button
+                    type="button"
+                    onClick={() => { setEmail('namit@gmail.com'); setPassword('12345678'); }}
+                    className="text-blue-400 hover:underline cursor-pointer font-mono"
+                  >
+                    namit@gmail.com / 12345678
+                  </button>
+                </div>
               </div>
               <Button variant="primary" size="sm" onClick={authMode === 'login' ? handleLogin : handleSignup} loading={loginLoading} className="w-full">
                 <Loader2 size={12} className={loginLoading ? 'animate-spin' : ''} />{authMode === 'login' ? 'Login' : 'Create account'}
@@ -213,6 +222,37 @@ export function Settings() {
           </span>
         </CardHeader>
         <CardBody className="space-y-5">
+          {/* Theme Mode */}
+          <div>
+            <label className="text-xs text-[#5a5a70] block mb-2">Interface Theme</label>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setTheme('dark')}
+                className={`flex items-center gap-2 px-4 py-2 rounded border text-xs font-mono transition-all ${
+                  theme === 'dark'
+                    ? 'border-blue-500 bg-blue-500/10 text-white font-semibold shadow-sm'
+                    : 'border-[#1e1e2e] bg-[#0d0d16] text-[#8080a0] hover:text-white'
+                }`}
+              >
+                <Moon size={14} className={theme === 'dark' ? 'text-blue-400' : 'text-[#6b6b80]'} />
+                <span>Dark Mode</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setTheme('light')}
+                className={`flex items-center gap-2 px-4 py-2 rounded border text-xs font-mono transition-all ${
+                  theme === 'light'
+                    ? 'border-blue-500 bg-blue-500/10 text-blue-600 font-semibold shadow-sm'
+                    : 'border-[#1e1e2e] bg-[#0d0d16] text-[#8080a0] hover:text-white'
+                }`}
+              >
+                <Sun size={14} className={theme === 'light' ? 'text-amber-500' : 'text-[#6b6b80]'} />
+                <span>Light Mode</span>
+              </button>
+            </div>
+          </div>
+
           {/* Color presets */}
           <div>
             <label className="text-xs text-[#5a5a70] block mb-2">Color Presets</label>

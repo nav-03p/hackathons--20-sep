@@ -128,10 +128,10 @@ function demoFulfill(o){
   ];
 
   const whSpec=[
-    {id:'W1',name:'Whitefield DC',      x:78,y:28, capacity:900, storageM3:5, throughputPerHr:160, handlingCostPerUnit:1.1, fixedOperatingCost:900, waves:[7,11,15,19]},
-    {id:'W2',name:'Peenya Hub',         x:22,y:62, capacity:700, storageM3:4, throughputPerHr:120, handlingCostPerUnit:1.4, fixedOperatingCost:750, waves:[8,12,16,20]},
-    {id:'W3',name:'Hosur Road Depot',   x:58,y:14, capacity:600, storageM3:3, throughputPerHr: 90, handlingCostPerUnit:1.3, fixedOperatingCost:620, waves:[6,10,14,18]},
-    {id:'W4',name:'Hebbal Cross-dock',  x:38,y:82, capacity:500, storageM3:2, throughputPerHr: 80, handlingCostPerUnit:1.6, fixedOperatingCost:480, waves:[9,13,17]}
+    {id:'W1',name:'Whitefield DC',      x:12.9750,y:77.7400, lat:12.9750, lng:77.7400, capacity:900, storageM3:5, throughputPerHr:160, handlingCostPerUnit:1.1, fixedOperatingCost:900, waves:[7,11,15,19]},
+    {id:'W2',name:'Peenya Hub',         x:13.0300,y:77.5250, lat:13.0300, lng:77.5250, capacity:700, storageM3:4, throughputPerHr:120, handlingCostPerUnit:1.4, fixedOperatingCost:750, waves:[8,12,16,20]},
+    {id:'W3',name:'Hosur Road Depot (Electronic City)', x:12.8452,y:77.6602, lat:12.8452, lng:77.6602, capacity:600, storageM3:3, throughputPerHr: 90, handlingCostPerUnit:1.3, fixedOperatingCost:620, waves:[6,10,14,18]},
+    {id:'W4',name:'Hebbal Cross-dock',  x:13.0358,y:77.5970, lat:13.0358, lng:77.5970, capacity:500, storageM3:2, throughputPerHr: 80, handlingCostPerUnit:1.6, fixedOperatingCost:480, waves:[9,13,17]}
   ];
 
   // deliberate stock asymmetry: the east DC is thin on monitors, the depot thin on laptops
@@ -157,11 +157,11 @@ function demoFulfill(o){
   });
 
   const hotspots=[
-    {name:'Whitefield',   x:80,y:26,w:3.0},
-    {name:'Electronic City',x:56,y:12,w:2.5},
-    {name:'Koramangala',  x:52,y:45,w:3.0},
-    {name:'Yelahanka',    x:36,y:88,w:1.5},
-    {name:'Rajajinagar',  x:26,y:55,w:2.0}
+    {name:'Whitefield',      x:12.9698, y:77.7499, lat:12.9698, lng:77.7499, w:3.0},
+    {name:'Electronic City', x:12.8452, y:77.6602, lat:12.8452, lng:77.6602, w:2.5},
+    {name:'Koramangala',     x:12.9352, y:77.6245, lat:12.9352, lng:77.6245, w:3.0},
+    {name:'Yelahanka',       x:13.1007, y:77.5963, lat:13.1007, lng:77.5963, w:1.5},
+    {name:'Rajajinagar',     x:12.9982, y:77.5530, lat:12.9982, lng:77.5530, w:2.0}
   ];
   const totW=hotspots.reduce(function(a,h){return a+h.w;},0);
   function pickHot(){ let r=rng()*totW; for(const h of hotspots){ r-=h.w; if(r<=0) return h; } return hotspots[0]; }
@@ -171,7 +171,7 @@ function demoFulfill(o){
   const orders=[];
   for(let i=0;i<nOrders;i++){
     const h=pickHot();
-    const x=round(h.x+(rng()+rng()-1)*6,2), y=round(h.y+(rng()+rng()-1)*6,2);
+    const x=round(h.x+(rng()+rng()-1)*0.015,4), y=round(h.y+(rng()+rng()-1)*0.015,4);
     const priority=prioPool[Math.floor(rng()*prioPool.length)];
     const dueHr=priority==='critical'?round(3+rng()*3,1)
       :priority==='express'?round(6+rng()*5,1)

@@ -74,10 +74,11 @@ export function Year() {
 
   const curve = result?.curve || [];
   const curveNew = result?.curveNew || [];
+  const daysPerMonth = Math.round(365 / (curve.length || 12));
   const costData = curve.map(r => ({
     month: 'M' + r.month,
-    base: Math.round(r.avgDayCost * r.day),
-    new: curveNew[r.month - 1] ? Math.round(curveNew[r.month - 1].avgDayCost * curveNew[r.month - 1].day) : 0,
+    base: Math.round(r.avgDayCost * daysPerMonth),
+    new: curveNew[r.month - 1] ? Math.round(curveNew[r.month - 1].avgDayCost * daysPerMonth) : 0,
   }));
 
   const utilData = curve.map(r => ({
@@ -221,6 +222,34 @@ export function Year() {
               </CardBody>
             </Card>
           </div>
+
+          {/* Detailed Operational & Fuel Metrics */}
+          {stats && (
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="p-3 rounded-lg bg-[#111118] border border-[#1e1e2e]">
+                <div className="text-[10px] font-mono text-[#6b6b80]">MILEAGE REDUCED</div>
+                <div className="text-lg font-mono font-bold text-blue-400 mt-0.5">{stats.kmSaved.toLocaleString()} km</div>
+                <div className="text-[10px] text-[#8080a0] mt-0.5">Reduced road travel</div>
+              </div>
+              <div className="p-3 rounded-lg bg-[#111118] border border-[#1e1e2e]">
+                <div className="text-[10px] font-mono text-[#6b6b80]">FUEL COST SAVED</div>
+                <div className="text-lg font-mono font-bold text-emerald-400 mt-0.5">{fmtCurrency(stats.fuelSaved)}</div>
+                <div className="text-[10px] text-[#8080a0] mt-0.5">Direct fuel expenditure reduction</div>
+              </div>
+              <div className="p-3 rounded-lg bg-[#111118] border border-[#1e1e2e]">
+                <div className="text-[10px] font-mono text-[#6b6b80]">DRIVER LABOR SAVED</div>
+                <div className="text-lg font-mono font-bold text-purple-400 mt-0.5">{fmtCurrency(stats.labourSaved)}</div>
+                <div className="text-[10px] text-[#8080a0] mt-0.5">~{stats.driveHrsSaved} driver hours saved</div>
+              </div>
+              <div className="p-3 rounded-lg bg-[#111118] border border-[#1e1e2e]">
+                <div className="text-[10px] font-mono text-[#6b6b80]">WEISZFELD MEDIAN COORD</div>
+                <div className="text-lg font-mono font-bold text-white mt-0.5">
+                  {prop ? `(${prop.x.toFixed(2)}, ${prop.y.toFixed(2)})` : '—'}
+                </div>
+                <div className="text-[10px] text-emerald-400 mt-0.5">Fermat-Weber optimal center</div>
+              </div>
+            </div>
+          )}
 
           <Card>
             <CardHeader><span className="text-sm font-medium text-white">Total Cost: Base vs With New Warehouse</span></CardHeader>

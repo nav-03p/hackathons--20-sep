@@ -40,30 +40,81 @@ const RED_MARKER = new L.DivIcon({
   iconAnchor: [5, 5],
 });
 
-const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN;
-const MAP_TILES = MAPBOX_TOKEN
-  ? {
-      url: `https://api.mapbox.com/styles/v1/mapbox/dark-v11/tiles/512/{z}/{x}/{y}@2x?access_token=${MAPBOX_TOKEN}`,
-      attribution: '&copy; <a href="https://www.mapbox.com/">Mapbox</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-      maxZoom: 20,
-      tileSize: 512,
-      zoomOffset: -1,
-    }
-  : {
-      url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-      attribution: '&copy; <a href="https://carto.com/">CARTO</a> &copy; OpenStreetMap contributors',
-      maxZoom: 19,
-    };
+const MAP_LAYERS = {
+  dark: {
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+    attribution: '&copy; <a href="https://www.esri.com/">Esri</a> &copy; OpenStreetMap contributors',
+    maxZoom: 16,
+  },
+  osm: {
+    url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    maxZoom: 19,
+  },
+  satellite: {
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    attribution: '&copy; <a href="https://www.esri.com/">Esri</a>, Maxar, Earthstar Geographics',
+    maxZoom: 18,
+  },
+};
 
-// Smart coordinate converter: handles both real GPS (lat ~12.9, lng ~77.5) and 0-100 normalized grid coordinates
-const toBengaluruLatLng = (p: { x: number; y: number }): L.LatLngExpression => {
-  if (p.x >= 10 && p.x <= 30 && p.y >= 60 && p.y <= 90) {
+const KNOWN_BENGALURU_COORDS: Record<string, [number, number]> = {
+  'whitefield': [12.9698, 77.7499],
+  'whitefield dc': [12.9750, 77.7400],
+  'peenya': [13.0285, 77.5197],
+  'peenya hub': [13.0300, 77.5250],
+  'hosur': [12.8452, 77.6602],
+  'hosur road depot': [12.8452, 77.6602],
+  'hosur road': [12.8452, 77.6602],
+  'electronic city': [12.8452, 77.6602],
+  'hebbal': [13.0358, 77.5970],
+  'hebbal cross-dock': [13.0358, 77.5970],
+  'basavanagudi': [12.9410, 77.5750],
+  'basavanagudi hub': [12.9420, 77.5700],
+  'jayanagar': [12.9250, 77.5830],
+  'jayanagar dock': [12.9250, 77.5840],
+  'gandhi bazaar': [12.9340, 77.5712],
+  'gandhi bazaar depot': [12.9360, 77.5720],
+  'dvg road': [12.9290, 77.5690],
+  'dvg road point': [12.9270, 77.5680],
+  'south bangalore dc': [12.9150, 77.5760],
+  '9th block node': [12.9200, 77.5850],
+  'koramangala': [12.9352, 77.6245],
+  'indiranagar': [12.9784, 77.6408],
+  'hsr layout': [12.9121, 77.6446],
+  'marathahalli': [12.9591, 77.6974],
+  'btm layout': [12.9165, 77.6101],
+  'rajajinagar': [12.9982, 77.5530],
+  'malleshwaram': [13.0031, 77.5643],
+  'yelahanka': [13.1007, 77.5963],
+  'banashankari': [12.9255, 77.5468],
+};
+
+// Smart coordinate converter: handles real GPS, known area names, and normalized grid
+const toBengaluruLatLng = (p: { x: number; y: number; lat?: number; lng?: number; name?: string; id?: string }): L.LatLngExpression => {
+  if (p.lat != null && p.lng != null && p.lat >= 8 && p.lat <= 36 && p.lng >= 68 && p.lng <= 98) {
+    return [p.lat, p.lng];
+  }
+  const nameKey = (p.name || '').toLowerCase().trim();
+  if (KNOWN_BENGALURU_COORDS[nameKey]) {
+    return KNOWN_BENGALURU_COORDS[nameKey];
+  }
+  for (const [key, coords] of Object.entries(KNOWN_BENGALURU_COORDS)) {
+    if (nameKey.includes(key) || (nameKey.length > 3 && key.includes(nameKey))) {
+      return coords;
+    }
+  }
+  if (p.x >= 12.0 && p.x <= 14.0 && p.y >= 77.0 && p.y <= 78.5) {
     return [p.x, p.y];
   }
-  if (p.y >= 10 && p.y <= 30 && p.x >= 60 && p.x <= 90) {
+  if (p.y >= 12.0 && p.y <= 14.0 && p.x >= 77.0 && p.x <= 78.5) {
     return [p.y, p.x];
   }
-  return [12.82 + (p.y / 100) * 0.28, 77.48 + (p.x / 100) * 0.28];
+  const clampedX = Math.max(0, Math.min(100, p.x));
+  const clampedY = Math.max(0, Math.min(100, p.y));
+  const lat = 12.82 + (clampedY / 100) * 0.28;
+  const lng = 77.48 + (clampedX / 100) * 0.28;
+  return [lat, lng];
 };
 
 interface PopupNeighborhood {
@@ -80,17 +131,21 @@ export function MapExplorer() {
   const [result, setResult] = useState<OptResult | null>(null);
   const [zoom, setZoom] = useState(13);
 
+  const [mapStyle, setMapStyle] = useState<'dark' | 'osm' | 'satellite'>('dark');
+  const tileLayerRef = useRef<L.TileLayer | null>(null);
+
   const latLng = toBengaluruLatLng;
 
   useEffect(() => {
     if (!mapRef.current || mapRefLeaflet.current) return;
     const m = L.map(mapRef.current, {
-      center: [12.97, 77.59],
-      zoom: 11,
+      center: [12.94, 77.58],
+      zoom: 12,
       zoomControl: false,
     });
     L.control.zoom({ position: 'bottomright' }).addTo(m);
-    L.tileLayer(MAP_TILES.url, MAP_TILES).addTo(m);
+    const initialLayer = MAP_LAYERS[mapStyle];
+    tileLayerRef.current = L.tileLayer(initialLayer.url, initialLayer).addTo(m);
     linesRef.current = L.layerGroup().addTo(m);
     mapRefLeaflet.current = m;
 
@@ -102,6 +157,16 @@ export function MapExplorer() {
       mapRefLeaflet.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    const m = mapRefLeaflet.current;
+    if (!m) return;
+    if (tileLayerRef.current) {
+      m.removeLayer(tileLayerRef.current);
+    }
+    const layer = MAP_LAYERS[mapStyle];
+    tileLayerRef.current = L.tileLayer(layer.url, layer).addTo(m);
+  }, [mapStyle]);
 
   useEffect(() => {
     const m = mapRefLeaflet.current;
@@ -193,6 +258,26 @@ export function MapExplorer() {
           <p className="text-[10px] text-[#4a4a60]">Bengaluru, India · city-wide synthetic demand · {nb.length} areas · {wh.length} candidates</p>
         </div>
         <div className="flex items-center gap-2">
+          <div className="flex items-center bg-[#111118] border border-[#1e1e2e] rounded p-0.5 text-xs font-mono">
+            <button
+              onClick={() => setMapStyle('dark')}
+              className={`px-2 py-1 rounded text-[10px] ${mapStyle === 'dark' ? 'bg-blue-600 text-white font-semibold' : 'text-[#8080a0] hover:text-white'}`}
+            >
+              Dark
+            </button>
+            <button
+              onClick={() => setMapStyle('osm')}
+              className={`px-2 py-1 rounded text-[10px] ${mapStyle === 'osm' ? 'bg-blue-600 text-white font-semibold' : 'text-[#8080a0] hover:text-white'}`}
+            >
+              Street OSM
+            </button>
+            <button
+              onClick={() => setMapStyle('satellite')}
+              className={`px-2 py-1 rounded text-[10px] ${mapStyle === 'satellite' ? 'bg-blue-600 text-white font-semibold' : 'text-[#8080a0] hover:text-white'}`}
+            >
+              Satellite
+            </button>
+          </div>
           <Badge variant="muted">{wh.filter(w => result?.openWarehouses.includes(w.id)).length} open · {wh.length} candidates</Badge>
           <Button variant="primary" size="sm" onClick={run}>
             <Plus size={13} />Optimize

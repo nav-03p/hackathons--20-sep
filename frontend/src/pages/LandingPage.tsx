@@ -341,7 +341,18 @@ export function LandingPage({ onNavigate }: { onNavigate: (p: Page) => void }) {
             <label className="block text-xs text-[#a0a0b0]">Password<input required minLength={6} type="password" value={password} onChange={e => setPassword(e.target.value)} className="mt-1.5 w-full rounded border border-[#2a2a3a] bg-[#0a0a0f] px-3 py-2 text-sm text-white outline-none focus:border-blue-500" /></label>
             {authError && <p className="rounded border border-red-500/30 bg-red-500/10 p-2 text-xs text-red-300">{authError}</p>}
             <Button type="submit" variant="primary" size="md" loading={authLoading} className="w-full">{authMode === 'login' ? 'Sign in and open map' : 'Create account and open map'}</Button>
-            {authMode === 'login' && <p className="text-[10px] leading-relaxed text-[#6b6b80]">Bengaluru 300: planner@karnataka300.demo / karnataka300<br />Bengaluru 500: planner@karnataka500.demo / karnataka500</p>}
+            {authMode === 'login' && (
+              <div className="text-[11px] leading-relaxed text-[#6b6b80] flex flex-wrap gap-2 items-center">
+                <span>Demo account:</span>
+                <button
+                  type="button"
+                  onClick={() => { setEmail('namit@gmail.com'); setPassword('12345678'); }}
+                  className="text-blue-400 hover:underline cursor-pointer font-mono"
+                >
+                  namit@gmail.com / 12345678
+                </button>
+              </div>
+            )}
           </form>
         </div>
       )}
