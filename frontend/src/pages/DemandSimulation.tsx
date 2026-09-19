@@ -116,23 +116,23 @@ export function DemandSimulation() {
               <div className="space-y-2 pt-2 border-t border-[#1e1e2e]">
                 <div className="flex justify-between text-xs">
                   <span className="text-[#5a5a70]">Expected cost</span>
-                  <span className="font-mono text-white">{fmtCurrency(result.meanCost)}</span>
+                  <span className="font-mono text-white">{fmtCurrency(result.expectedTotal ?? (result as any).meanCost ?? 0)}</span>
                 </div>
                 <div className="flex justify-between text-xs">
-                  <span className="text-[#5a5a70]">P95 cost</span>
-                  <span className="font-mono text-amber-400">{fmtCurrency(result.p95Cost)}</span>
+                  <span className="text-[#5a5a70]">P90/P95 cost</span>
+                  <span className="font-mono text-amber-400">{fmtCurrency(result.p90 ?? (result as any).p95Cost ?? 0)}</span>
                 </div>
                 <div className="flex justify-between text-xs">
                   <span className="text-[#5a5a70]">Worst-case</span>
-                  <span className="font-mono text-red-400">{fmtCurrency(result.worstCost)}</span>
+                  <span className="font-mono text-red-400">{fmtCurrency(result.worst ?? (result as any).worstCost ?? 0)}</span>
                 </div>
                 <div className="flex justify-between text-xs">
                   <span className="text-[#5a5a70]">Best-case</span>
-                  <span className="font-mono text-emerald-400">{fmtCurrency(result.bestCost)}</span>
+                  <span className="font-mono text-emerald-400">{fmtCurrency(result.best ?? (result as any).bestCost ?? 0)}</span>
                 </div>
                 <div className="flex justify-between text-xs">
-                  <span className="text-[#5a5a70]">Volatility (P95/mean)</span>
-                  <span className="font-mono text-[#c0c0d0]">{((result.p95Cost / result.meanCost - 1) * 100).toFixed(1)}%</span>
+                  <span className="text-[#5a5a70]">Volatility (P90/mean)</span>
+                  <span className="font-mono text-[#c0c0d0]">{(((result.p90 || (result as any).p95Cost || 1) / Math.max(1, result.expectedTotal || (result as any).meanCost || 1) - 1) * 100).toFixed(1)}%</span>
                 </div>
                 <div className="pt-2 text-[10px] text-[#4a4a60] leading-relaxed">
                   <Info size={10} className="inline mr-1" />
@@ -165,16 +165,16 @@ export function DemandSimulation() {
                       formatter={(v: any) => [`${(Number(v) * 100).toFixed(2)}%`, 'Cumulative']}
                     />
                     <ReferenceLine
-                      x={result?.meanCost}
+                      x={result?.expectedTotal ?? (result as any)?.meanCost}
                       stroke="#3b82f6"
                       strokeDasharray="4 2"
                       label={{ value: 'Expected', fontSize: 9, fill: '#3b82f6', position: 'top' }}
                     />
                     <ReferenceLine
-                      x={result?.p95Cost}
+                      x={result?.p90 ?? (result as any)?.p95Cost}
                       stroke="#f59e0b"
                       strokeDasharray="4 2"
-                      label={{ value: 'P95', fontSize: 9, fill: '#f59e0b', position: 'top' }}
+                      label={{ value: 'P90', fontSize: 9, fill: '#f59e0b', position: 'top' }}
                     />
                     <Area
                       type="monotone"
@@ -200,22 +200,25 @@ export function DemandSimulation() {
             <CardHeader><span className="text-sm font-medium text-white">Scenario Comparison</span></CardHeader>
             <CardBody className="space-y-3">
               {[
-                { label: 'Baseline (no growth)', cost: result?.bestCost || 0, color: '#22c55e' },
-                { label: 'Expected (+' + growth + '%)', cost: result?.meanCost || 0, color: '#3b82f6' },
-                { label: 'P95 (+' + growth + '%)', cost: result?.p95Cost || 0, color: '#f59e0b' },
-                { label: 'Worst-case (+' + growth + '%)', cost: result?.worstCost || 0, color: '#ef4444' },
-              ].map((s, i) => (
-                <div key={i} className="flex items-center gap-3">
-                  <div className="w-24 text-xs text-[#5a5a70]">{s.label}</div>
-                  <div className="flex-1 h-6 bg-[#0d0d16] rounded overflow-hidden flex">
-                    <div
-                      className="h-full rounded transition-all"
-                      style={{ width: `${(s.cost / (result?.worstCost || 1)) * 100}%`, background: s.color }}
-                    />
+                { label: 'Baseline (no growth)', cost: result?.best ?? (result as any)?.bestCost ?? 0, color: '#22c55e' },
+                { label: 'Expected (+' + growth + '%)', cost: result?.expectedTotal ?? (result as any)?.meanCost ?? 0, color: '#3b82f6' },
+                { label: 'P90 (+' + growth + '%)', cost: result?.p90 ?? (result as any)?.p95Cost ?? 0, color: '#f59e0b' },
+                { label: 'Worst-case (+' + growth + '%)', cost: result?.worst ?? (result as any)?.worstCost ?? 0, color: '#ef4444' },
+              ].map((s, i) => {
+                const maxCost = Math.max(1, result?.worst ?? (result as any)?.worstCost ?? 1);
+                return (
+                  <div key={i} className="flex items-center gap-3">
+                    <div className="w-24 text-xs text-[#5a5a70]">{s.label}</div>
+                    <div className="flex-1 h-6 bg-[#0d0d16] rounded overflow-hidden flex">
+                      <div
+                        className="h-full rounded transition-all"
+                        style={{ width: `${Math.min(100, Math.max(0, (s.cost / maxCost) * 100))}%`, background: s.color }}
+                      />
+                    </div>
+                    <div className="w-24 text-right font-mono text-xs text-white">{fmtCurrency(s.cost)}</div>
                   </div>
-                  <div className="w-24 text-right font-mono text-xs text-white">{fmtCurrency(s.cost)}</div>
-                </div>
-              ))}
+                );
+              })}
             </CardBody>
           </Card>
         </div>
