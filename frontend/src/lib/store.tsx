@@ -5,10 +5,38 @@ import { api } from './api';
 type NB = Point & { demand: number; name: string };
 type WH = Candidate & { name: string };
 
+export const DEFAULT_BENGALURU_NB: NB[] = [
+  { id: 'N01', name: 'Gandhi Bazaar', x: 12.934, y: 77.571, demand: 420 },
+  { id: 'N02', name: 'DVG Road', x: 12.938, y: 77.569, demand: 310 },
+  { id: 'N03', name: 'Bull Temple Road', x: 12.941, y: 77.568, demand: 380 },
+  { id: 'N04', name: 'Tagore Park', x: 12.945, y: 77.572, demand: 190 },
+  { id: 'N05', name: 'Sajjan Rao Circle', x: 12.948, y: 77.575, demand: 260 },
+  { id: 'N06', name: 'NR Colony', x: 12.936, y: 77.563, demand: 230 },
+  { id: 'N07', name: 'Hanumanthanagar', x: 12.939, y: 77.558, demand: 175 },
+  { id: 'N08', name: 'VV Puram', x: 12.951, y: 77.578, demand: 345 },
+  { id: 'N09', name: '4th Block Jayanagar', x: 12.925, y: 77.583, demand: 500 },
+  { id: 'N10', name: '7th Block Jayanagar', x: 12.928, y: 77.578, demand: 440 },
+  { id: 'N11', name: '9th Block Jayanagar', x: 12.921, y: 77.592, demand: 390 },
+  { id: 'N12', name: 'RV Road', x: 12.931, y: 77.579, demand: 280 },
+  { id: 'N13', name: '11th Main Jayanagar', x: 12.926, y: 77.588, demand: 320 },
+  { id: 'N14', name: 'Tilak Nagar', x: 12.922, y: 77.599, demand: 210 },
+  { id: 'N15', name: 'Jayanagar East', x: 12.918, y: 77.596, demand: 185 },
+  { id: 'N16', name: '3rd Block Jayanagar', x: 12.932, y: 77.585, demand: 295 },
+];
+
+export const DEFAULT_BENGALURU_WH: WH[] = [
+  { id: 'W1', name: 'Basavanagudi Hub', x: 12.942, y: 77.570, fixedCost: 1500, capacity: 900 },
+  { id: 'W2', name: 'Jayanagar Dock', x: 12.924, y: 77.585, fixedCost: 1500, capacity: 1100 },
+  { id: 'W3', name: 'Gandhi Bazaar Depot', x: 12.935, y: 77.573, fixedCost: 1400, capacity: 700 },
+  { id: 'W4', name: 'DVG Road Point', x: 12.939, y: 77.566, fixedCost: 1300, capacity: 650 },
+  { id: 'W5', name: 'South Bangalore DC', x: 12.930, y: 77.580, fixedCost: 1800, capacity: 1400 },
+  { id: 'W6', name: '9th Block Node', x: 12.920, y: 77.590, fixedCost: 1400, capacity: 800 },
+];
+
 function savedDataset(): { nb: NB[]; wh: WH[] } | null {
   try {
     const value = JSON.parse(localStorage.getItem('wlo_dataset') || 'null');
-    return Array.isArray(value?.nb) && Array.isArray(value?.wh) ? value : null;
+    return Array.isArray(value?.nb) && Array.isArray(value?.wh) && value.nb.length > 0 ? value : null;
   } catch { return null; }
 }
 
@@ -55,9 +83,9 @@ const DEFAULT_PREFS: ColorPrefs = {
 const StoreCtx = createContext<Ctx | null>(null);
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
-  const [nb, setNb] = useState<NB[]>(() => savedDataset()?.nb || []);
-  const [wh, setWh] = useState<WH[]>(() => savedDataset()?.wh || []);
-  const [loaded, setLoaded] = useState(() => !!savedDataset());
+  const [nb, setNb] = useState<NB[]>(() => savedDataset()?.nb || DEFAULT_BENGALURU_NB);
+  const [wh, setWh] = useState<WH[]>(() => savedDataset()?.wh || DEFAULT_BENGALURU_WH);
+  const [loaded, setLoaded] = useState(true);
   const [loading, setLoading] = useState(false);
   const [token, setToken] = useState<string | null>(() => localStorage.getItem('wlo_token'));
   const [companyId, setCompanyId] = useState<string | null>(() => localStorage.getItem('wlo_company'));

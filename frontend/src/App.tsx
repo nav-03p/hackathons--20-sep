@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState, Component, type ErrorInfo, type ReactNode } from 'react';
 import { Sidebar, type Page } from '@/components/layout/Sidebar';
 import { TopNav } from '@/components/layout/TopNav';
 import { LandingPage } from '@/pages/LandingPage';
@@ -19,6 +19,41 @@ import { Tenants } from '@/pages/Tenants';
 import { Year } from '@/pages/Year';
 import { cn } from '@/lib/utils';
 import { useStore } from '@/lib/store';
+import { AlertTriangle, RefreshCw } from 'lucide-react';
+import { Button } from '@/components/ui/Button';
+
+class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; error: Error | null }> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error('UI Error caught by ErrorBoundary:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="h-full flex flex-col items-center justify-center p-6 bg-[#0a0a0f] text-center">
+          <div className="w-12 h-12 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-400 mb-4">
+            <AlertTriangle size={24} />
+          </div>
+          <h2 className="text-lg font-semibold text-white mb-1">Component Error</h2>
+          <p className="text-xs text-[#6b6b80] max-w-md mb-4">{this.state.error?.message || 'An unexpected error occurred while rendering this page.'}</p>
+          <Button variant="primary" size="sm" onClick={() => this.setState({ hasError: false, error: null })}>
+            <RefreshCw size={13} /> Try Again
+          </Button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 function AppPage({ page, navigate }: { page: Page; navigate: (p: Page) => void }) {
   switch (page) {
@@ -42,29 +77,21 @@ function AppPage({ page, navigate }: { page: Page; navigate: (p: Page) => void }
 }
 
 export default function App() {
-  const [page, setPage] = useState<Page>(() => localStorage.getItem('wlo_token') ? 'map' : 'landing');
+  const [page, setPage] = useState<Page>('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { loaded, loadSynthetic, token } = useStore();
+  const { loaded, loadBengaluru } = useStore();
 
-  const navigate = async (p: Page) => {
-    // localStorage is updated synchronously by login/signup, while React state
-    // updates on the following render. Reading both lets the auth modal open
-    // Map Explorer immediately after a successful submission.
-    const authenticated = !!token || !!localStorage.getItem('wlo_token');
-    if (p !== 'landing' && !authenticated) {
-      setPage('landing');
-      return;
-    }
+  const navigate = (p: Page) => {
     setPage(p);
     setSidebarOpen(false);
-    // Every workspace page is immediately usable, even before a user signs in.
-    if (p !== 'landing' && p !== 'docs' && p !== 'settings' && !loaded) {
-      try { await loadSynthetic(56, 56); } catch { /* the page reports backend errors if unavailable */ }
-    }
   };
 
   if (page === 'landing') {
-    return <LandingPage onNavigate={navigate} />;
+    return (
+      <ErrorBoundary>
+        <LandingPage onNavigate={navigate} />
+      </ErrorBoundary>
+    );
   }
 
   return (
@@ -95,7 +122,9 @@ export default function App() {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <TopNav onMenuOpen={() => setSidebarOpen(true)} currentPage={page} onLogout={() => setPage('landing')} />
         <main className="flex-1 overflow-hidden">
-          <AppPage page={page} navigate={navigate} />
+          <ErrorBoundary>
+            <AppPage page={page} navigate={navigate} />
+          </ErrorBoundary>
         </main>
       </div>
     </div>

@@ -193,8 +193,10 @@ export function LandingPage({ onNavigate }: { onNavigate: (p: Page) => void }) {
           <span className="font-semibold text-white tracking-tight">Wherehouse</span>
         </div>
         <div className="flex items-center gap-3">
+          <Button variant="outline" size="sm" onClick={() => onNavigate('dashboard')}>
+            Explore Demo
+          </Button>
           <Button variant="ghost" size="sm" onClick={() => openAuth('login')}>Sign in</Button>
-          <Button variant="ghost" size="sm" onClick={() => openAuth('login')}>Docs</Button>
           <Button variant="primary" size="sm" onClick={() => openAuth('signup')}>
             Create account
           </Button>
@@ -221,14 +223,14 @@ export function LandingPage({ onNavigate }: { onNavigate: (p: Page) => void }) {
         </p>
 
         <div className="flex items-center gap-3 mb-16">
-          <Button variant="primary" size="lg" onClick={() => openAuth('signup')}>
-            Start free <ArrowRight size={15} />
+          <Button variant="primary" size="lg" onClick={() => onNavigate('dashboard')}>
+            Explore Live Demo <ArrowRight size={15} />
           </Button>
           <Button variant="outline" size="lg" onClick={() => openAuth('login')}>
-            Sign in to explore
+            Sign in
           </Button>
         </div>
-        <p className="-mt-12 mb-12 text-[11px] text-[#4a4a60]">Sign in to access the optimizer, map, shared-network workspace, and system datasets.</p>
+        <p className="-mt-12 mb-12 text-[11px] text-[#4a4a60]">Instant demo access with Bangalore Basavanagudi & Jayanagar dataset pre-loaded.</p>
 
         {/* Metrics */}
         <div className="grid grid-cols-3 gap-6 mb-12 max-w-lg">
@@ -309,11 +311,11 @@ export function LandingPage({ onNavigate }: { onNavigate: (p: Page) => void }) {
           Load a dataset, configure constraints, and find optimal warehouse locations in seconds.
         </p>
         <div className="flex items-center gap-3 justify-center">
-          <Button variant="primary" size="lg" onClick={() => openAuth('signup')}>
-            Start Optimizing <ChevronRight size={15} />
+          <Button variant="primary" size="lg" onClick={() => onNavigate('dashboard')}>
+            Launch Workspace <ChevronRight size={15} />
           </Button>
-          <Button variant="ghost" size="lg" onClick={() => openAuth('login')}>
-            Sign in to compare
+          <Button variant="outline" size="lg" onClick={() => openAuth('login')}>
+            Sign in
           </Button>
         </div>
       </section>
