@@ -160,8 +160,19 @@ export function DataImport() {
                 <div className="text-[#8080a0] mb-1">Expected columns:</div>
                 id, name, x (longitude), y (latitude), demand<br/>
                 Example:<br/>
-                <span className="text-[#c0c0d0]">N01,Downtown,20.5,30.2,1800</span>
+                <span className="text-[#c0c0d0]">N01,Gandhi Bazaar,12.934,77.571,420</span>
               </div>
+              <Button variant="primary" size="sm" onClick={async () => {
+                const res = await fetch('/api/bengaluru').then(r => r.json());
+                const nbRows: NB[] = res.neighborhoods.map((n: any) => ({ id: n.id, name: n.name, x: n.x, y: n.y, demand: n.demand }));
+                const whRows: WH[] = res.candidates.map((w: any) => ({ id: w.id, name: w.name, x: w.x, y: w.y, fixedCost: w.fixedCost, capacity: w.capacity }));
+                setData(nbRows, whRows);
+                setFileName('Basavanagudi & Jayanagar (Bangalore) — 16 neighborhoods, 6 candidate hubs');
+                setParsed(res.neighborhoods.map((n: any) => ({ id: n.id, name: n.name, lat: n.lat, lng: n.lng, demand: n.demand })));
+                setStep('done');
+              }} className="w-full justify-start">
+                <FileText size={13} className="mr-2" />Load Bangalore (Basavanagudi & Jayanagar) Dataset
+              </Button>
               <Button variant="outline" size="sm" onClick={loadSample} className="w-full justify-start">
                 <FileText size={13} className="mr-2" />Use sample dataset (32 NYC neighborhoods)
               </Button>

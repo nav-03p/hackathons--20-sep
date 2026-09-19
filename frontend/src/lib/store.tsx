@@ -27,6 +27,7 @@ type Ctx = {
   token: string | null; companyId: string | null; companyName: string | null;
   prefs: ColorPrefs;
   loadDemo: () => Promise<void>;
+  loadBengaluru: () => Promise<void>;
   loadSynthetic: (size?: number, seed?: number, authToken?: string, warehouseCapacity?: number) => Promise<void>;
   setData: (nb: NB[], wh: WH[]) => void;
   login: (email: string, password: string) => Promise<void>;
@@ -75,6 +76,16 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setLoaded(true);
     } finally { setLoading(false); }
   }, []);
+
+  const loadBengaluru = useCallback(async () => {
+    setLoading(true);
+    try {
+      const d = await api.bengaluru();
+      const nextNb = d.neighborhoods.map(n => ({...n, demand: n.demand || 100, name: n.name || n.id}));
+      const nextWh = d.candidates.map(w => ({...w, name: w.name || w.id}));
+      saveDataset(nextNb, nextWh);
+    } finally { setLoading(false); }
+  }, [saveDataset]);
 
   const saveDataset = useCallback((nextNb: NB[], nextWh: WH[]) => {
     setNb(nextNb); setWh(nextWh); setLoaded(true);
@@ -155,7 +166,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   return (
     <StoreCtx.Provider value={{
       nb, wh, loaded, loading, token, companyId, companyName,
-      prefs, loadDemo, loadSynthetic, setData, login, signup, logout,
+      prefs, loadDemo, loadBengaluru, loadSynthetic, setData, login, signup, logout,
       setPrefs: setPref,
       addNeighborhood, updateNeighborhood, removeNeighborhood,
       addWarehouse, updateWarehouse, removeWarehouse,

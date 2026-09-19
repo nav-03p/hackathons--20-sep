@@ -17,6 +17,8 @@ frontend/.vite/
 # binaries & archives
 *.zip
 cpp/wlopt
+cpp/wlopt.exe
+*.exe
 *.o
 *.out
 

@@ -6,7 +6,11 @@ const { spawnSync } = require('child_process');
 const url = require('url');
 
 const PORT = process.env.PORT || 4000;
-const WLOPT = process.env.WLOPT || path.join(__dirname, '..', 'cpp', 'wlopt');
+let defaultWlopt = path.join(__dirname, '..', 'cpp', 'wlopt');
+if (!fs.existsSync(defaultWlopt) && fs.existsSync(defaultWlopt + '.exe')) {
+  defaultWlopt += '.exe';
+}
+const WLOPT = process.env.WLOPT || defaultWlopt;
 const ROOT = path.join(__dirname, '..');
 
 function runWlopt(payload) {
@@ -77,6 +81,47 @@ function explain(sol, payload){
     '(radius '+P.maxServiceRadius+', capacity-checked, demand-descending order).');
   return lines;
 }
+// GRIDPOINT seed: real Basavanagudi + Jayanagar neighborhoods, Bangalore.
+// Lat/lng converted to a 0-100 normalized grid centred on the area.
+// Schema is city-agnostic — swap any neighborhoods (name,x,y,demand) without code changes.
+// Reference origin: 12.934°N 77.571°E  (Gandhi Bazaar, Basavanagudi)
+// 1 degree lat ≈ 111 km, 1 degree lng ≈ 97 km at this latitude.
+// We map: x = (lng - 77.55) * 97 * 5   y = (lat - 12.91) * 111 * 5  → ~0-100 range
+function toGrid(lat,lng){ return { x:+((lng-77.55)*97*5).toFixed(2), y:+((lat-12.91)*111*5).toFixed(2) }; }
+const NB_RAW=[
+  // Basavanagudi cluster
+  {id:'N1', name:'Gandhi Bazaar',    lat:12.9340, lng:77.5712, demand:420},
+  {id:'N2', name:'DVG Road',         lat:12.9290, lng:77.5690, demand:310},
+  {id:'N3', name:'Bull Temple Road', lat:12.9400, lng:77.5680, demand:380},
+  {id:'N4', name:'Tagore Park',      lat:12.9250, lng:77.5730, demand:190},
+  {id:'N5', name:'Sajjan Rao Circle',lat:12.9310, lng:77.5760, demand:260},
+  {id:'N6', name:'NR Colony',        lat:12.9270, lng:77.5650, demand:230},
+  {id:'N7', name:'Hanumanthanagar',  lat:12.9230, lng:77.5710, demand:175},
+  {id:'N8', name:'VV Puram',         lat:12.9360, lng:77.5740, demand:345},
+  // Jayanagar cluster
+  {id:'N9',  name:'4th Block Jayanagar', lat:12.9280, lng:77.5830, demand:500},
+  {id:'N10', name:'7th Block Jayanagar', lat:12.9220, lng:77.5810, demand:440},
+  {id:'N11', name:'9th Block Jayanagar', lat:12.9180, lng:77.5850, demand:390},
+  {id:'N12', name:'RV Road',             lat:12.9320, lng:77.5800, demand:280},
+  {id:'N13', name:'11th Main Jayanagar', lat:12.9256, lng:77.5862, demand:320},
+  {id:'N14', name:'Tilak Nagar',         lat:12.9348, lng:77.5878, demand:210},
+  {id:'N15', name:'Jayanagar East',      lat:12.9290, lng:77.5890, demand:185},
+  {id:'N16', name:'Jaya Nagar 3rd Block',lat:12.9312, lng:77.5822, demand:295},
+];
+const neighborhoods=NB_RAW.map(function(n){ const g=toGrid(n.lat,n.lng); return {id:n.id,name:n.name,x:g.x,y:g.y,demand:n.demand,lat:n.lat,lng:n.lng}; });
+const CD_RAW=[
+  {id:'W1', name:'Basavanagudi Hub',   lat:12.9300, lng:77.5700, capacity:900,  fixedCost:2000},
+  {id:'W2', name:'Jayanagar Dock',     lat:12.9250, lng:77.5840, capacity:1100, fixedCost:2200},
+  {id:'W3', name:'Gandhi Bazaar Depot',lat:12.9360, lng:77.5720, capacity:700,  fixedCost:1600},
+  {id:'W4', name:'DVG Road Point',     lat:12.9270, lng:77.5680, capacity:650,  fixedCost:1500},
+  {id:'W5', name:'South Bangalore DC', lat:12.9150, lng:77.5760, capacity:1400, fixedCost:2800},
+  {id:'W6', name:'9th Block Node',     lat:12.9200, lng:77.5850, capacity:800,  fixedCost:1800},
+];
+const candidates=CD_RAW.map(function(c){ const g=toGrid(c.lat,c.lng); return {id:c.id,name:c.name,x:g.x,y:g.y,capacity:c.capacity,fixedCost:c.fixedCost,lat:c.lat,lng:c.lng}; });
+const BENGALURU_DATA={ neighborhoods, candidates,
+  meta:{ city:'Bangalore', areas:['Basavanagudi','Jayanagar'],
+    note:'Real neighborhood lat/lng mapped to normalized 0-100 grid. Schema is city-agnostic.' }};
+
 const year = require('./yearsim.js');
 const shared = require('./shared.js');
 const envdb = require('./envdb.js');
@@ -136,6 +181,34 @@ const server = http.createServer(function(req,res){
     if(req.method==='GET' && u.pathname==='/api/demo'){
       send(res,200,genData({neighborhoods:18,candidates:6,seed:7,
         mode:'mixed',capacity:700,fixedCost:1500})); return;
+    }
+    // GRIDPOINT: Real Basavanagudi + Jayanagar neighborhoods (lat/lng mapped to x/y grid)
+    // Coordinates normalized to 0-100 scale; Haversine applied in C++ via road metric.
+    // Seed data is location-agnostic: any city's (x,y,demand) tuple works without code change.
+    if(req.method==='GET' && u.pathname==='/api/bengaluru'){
+      send(res,200,BENGALURU_DATA); return;
+    }
+    // GRIDPOINT: k=1..N cost sweep for infrastructure vs delivery trade-off chart
+    if(req.method==='POST' && u.pathname==='/api/sweep'){
+      const b=JSON.parse(await readBody(req)||'{}');
+      if(!b.neighborhoods||!b.candidates){ send(res,400,{error:'neighborhoods + candidates required'}); return; }
+      const P=Object.assign({deliveryCostPerKm:2,maxServiceRadius:60,
+        algorithm:'localsearch',distanceMetric:'euclidean',roadFactor:1.35,
+        randomSeed:42}, b.params||{});
+      const fixedSetup=b.fixedSetupCost!=null?b.fixedSetupCost:1500;
+      const maxK=Math.min(b.candidates.length, b.maxK||8);
+      const sweep=[];
+      for(let k=1;k<=maxK;k++){
+        try{
+          const res2=runWlopt(Object.assign({},b,{mode:'optimize',
+            params:Object.assign({},P,{minWarehouses:k,maxWarehouses:k})}));
+          sweep.push({k,deliveryCost:res2.deliveryCost,fixedCost:res2.fixedCost,
+            infraCost:k*fixedSetup,totalCost:res2.deliveryCost+k*fixedSetup,
+            openWarehouses:res2.openWarehouses,unserved:(res2.unserved||[]).length,
+            algorithmUsed:res2.algorithmUsed});
+        }catch(e){ sweep.push({k,error:String(e.message).slice(0,200)}); }
+      }
+      send(res,200,{sweep, note:'totalCost = deliveryCost + k×fixedSetupCost'}); return;
     }
     if(req.method==='GET' && u.pathname.indexOf('/app/')===0){
       const f=path.join(ROOT,'frontend',u.pathname.slice(5).replace(/\.\./g,''));

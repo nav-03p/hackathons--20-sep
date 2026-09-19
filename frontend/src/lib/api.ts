@@ -27,8 +27,11 @@ async function post<T>(p: string, body: unknown, token?: string): Promise<T> {
 export const api = {
   health: () => get<{ ok: boolean; wlopt: string; time: string; llm: string; db: string }>('/api/health'),
   demo: () => get<DemoData>('/api/demo'),
+  bengaluru: () => get<DemoData & { meta: { city: string; areas: string[]; note: string } }>('/api/bengaluru'),
   generate: (opts: Partial<GenOpts>) => post<DemoData>('/api/generate', opts),
   optimize: (body: OptBody) => post<OptResult>('/api/optimize', body),
+  sweep: (body: OptBody & { fixedSetupCost?: number; maxK?: number }) =>
+    post<{ sweep: { k: number; deliveryCost: number; fixedCost: number; infraCost: number; totalCost: number; openWarehouses: string[]; unserved: number; algorithmUsed: string; error?: string }[]; note: string }>('/api/sweep', body),
   compare: (body: CompareBody) => post<CompareResult>('/api/compare', body),
   simulate: (body: SimBody) => post<SimResult>('/api/simulate', body),
   sensitivity: (body: SensBody) => post<SensResult>('/api/sensitivity', body),
