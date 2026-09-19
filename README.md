@@ -1,72 +1,157 @@
-# 🌐 GRIDPOINT — Warehouse Location Optimization Platform
-> **Hack-a-Matics 24-Hour Hackathon · Theme: VECTOR**
+# 🌐 GRIDPOINT — Capacitated Warehouse Location & Network Optimization Platform
+> **Hack-a-Matics Hackathon · Theme: VECTOR**
 
-GRIDPOINT is a full-stack, location-agnostic warehouse placement and capacitated assignment optimization platform for e-commerce delivery networks. It finds the optimal warehouse locations and neighborhood service assignments to minimize demand-weighted delivery and infrastructure costs.
+**GRIDPOINT** is a high-performance, location-agnostic warehouse placement, capacitated assignment, and logistics network optimization platform. It solves the **Capacitated Facility Location Problem (CFLP)** using rigorous mathematical optimization algorithms implemented in **C++17**, paired with a modern **React 19 + TypeScript + Vite + Tailwind CSS v4** analytical workspace and a zero-dependency **Node.js REST API**.
 
 ---
 
-## 🏗 Architecture & Monorepo Layout
+## 🎯 Problem Statement & Core Capabilities
+
+E-commerce delivery networks face a fundamental trade-off: **delivery transit costs** (distance, vehicle fleet consumption, traffic congestion) versus **fixed infrastructure costs** (renting, staffing, and maintaining warehouse facilities).
+
+GRIDPOINT models this continuous & discrete optimization problem end-to-end:
+
+1. **Upload & Interactive Data Management**:
+   - Upload custom neighborhood datasets via CSV or JSON, or load the pre-configured **Bengaluru seed dataset** (16 neighborhoods across Basavanagudi & Jayanagar + 6 candidate hubs).
+   - Location-agnostic coordinate system: works seamlessly on any geographic coordinates (Lat/Lng or Cartesian grids).
+2. **Interactive Geospatial Visualization**:
+   - Real-time map rendering with dynamic bubble scaling representing daily order volume.
+   - Live assignment vectors connecting demand nodes to active warehouse hubs.
+   - Interactive service radius rings and capacity utilization meters.
+3. **User-Selectable Hub Count ($k$) & Exact/Heuristic Solvers**:
+   - Bounded $k_{\min} \le k \le k_{\max}$ search or single $k$ specification.
+   - Provably exact global optimum via **Branch-and-Bound (MILP)** and fast scalable metaheuristics (**Simulated Annealing**, **Local Search**, **Demand-Weighted K-Means/K-Medoids**, **Capacitated Greedy**).
+4. **Capacitated Assignment & Service Radius Enforcement**:
+   - Strict adherence to maximum warehouse throughput limits ($C_{\max}$).
+   - Maximum allowable delivery service radius ($R_{\max}$) with unserved demand anomaly detection and violation flagging.
+5. **Multi-Component Delivery & Infrastructure Cost Accounting**:
+   - Comprehensive cost model accounting for mileage, orders, vehicle profiles, fuel prices, and fixed setup amortizations.
+6. **Side-by-Side Baseline vs. Optimized Comparison**:
+   - Real-time delta comparison against a single central hub baseline showing percentage cost savings, transit mileage reductions, and CO₂ mitigation.
+
+---
+
+## 🌟 Advanced & Bonus Features
+
+- **Multi-Vehicle Fleet Profiles**:
+  - Select between **Two-Wheeler / Electric Bike** (40 orders, \$0.60/km), **Electric Cargo Van** (250 orders, \$1.20/km), **Standard Diesel Van** (500 orders, \$1.60/km), and **Heavy 14ft Truck** (1,200 orders, \$2.80/km).
+- **Fuel Price & Efficiency Modeling**:
+  - Live landed transit rate calculations:
+    $$\text{Landed Cost / km} = \text{Base Cost / km} + \left(\frac{\text{Fuel Price (\$ / L)}}{\text{Fuel Efficiency (km / L)}}\right)$$
+- **Traffic-Dependent Delivery Time Multipliers**:
+  - Pluggable traffic & circuity models: *Off-Peak / Night ($0.85\times$)*, *Standard Daylight ($1.0\times$)*, *Morning Rush ($1.50\times$)*, *Evening Peak ($1.75\times$)*, and *Monsoon Congestion ($2.00\times$)*.
+- **Demand Growth Scenario Simulation**:
+  - Interactive demand slider (-50% to +200%) enabling instant stress-testing and re-optimization across forecast horizons.
+- **Infrastructure vs. Delivery Cost Trade-Off Curve ($k=1 \dots N$ Sweep)**:
+  - Generates the $U$-shaped total cost curve $\text{TotalCost}(k) = \text{DeliveryCost}(k) + k \times \text{FixedCost}$ to mathematically identify the optimal number of warehouses $k^*$.
+- **Weiszfeld Continuous Geometric Median**:
+  - Computes the unconstrained Fermat-Weber continuous optimal coordinate $(\hat{x}, \hat{y})$ minimizing $\sum D_i \cdot d_i$ and snaps to the closest feasible candidate dock.
+
+---
+
+## 🏗 Architecture & Tech Stack
 
 ```
 hackamathics/
-├── backend/                  # Node.js REST API + persistent registries
-│   ├── server.js             # HTTP API (all endpoints, zero npm deps runtime)
-│   ├── envdb.js              # Auth, JWT, Supabase persistence, OpenRouter LLM
-│   ├── yearsim.js            # 365-day demand growth simulation + Weiszfeld median
-│   ├── shared.js             # Multi-tenant shared vs solo warehouse optimization
-│   ├── fulfill.js            # Operational fulfillment, VRP dispatch & inventory
-│   ├── whstore.js            # Persistent warehouse registry
-│   └── supabase.sql          # DB schema (wlo_users, wlo_datasets, wlo_runs)
+├── backend/                  # Node.js HTTP REST API (zero npm runtime dependencies)
+│   ├── server.js             # High-concurrency REST endpoints
+│   ├── envdb.js              # Supabase persistence & OpenRouter LLM integration
+│   ├── yearsim.js            # 365-day demand expansion & Weiszfeld engine
+│   ├── shared.js             # Multi-tenant logistics network allocator
+│   ├── fulfill.js            # Vehicle routing problem (VRP) & dispatch engine
+│   └── whstore.js            # Persistent warehouse hub registry
 │
 ├── cpp/                      # High-performance C++17 optimization core
-│   ├── src/main.cpp          # CLI dispatcher (JSON stdin -> solution stdout)
+│   ├── src/main.cpp          # CLI dispatcher (JSON stdio interface)
 │   └── include/
-│       ├── types.h           # Core domain structs (Neighborhood, Candidate, Solution)
-│       ├── cost.h            # Cost models (Euclidean, Manhattan, Road factor)
-│       ├── geo.h             # Weiszfeld geometric median algorithm
-│       ├── s_clust.h         # Demand-weighted k-means & k-medoids (PAM)
+│       ├── types.h           # Domain models (Neighborhood, Candidate, Solution)
+│       ├── cost.h            # Distance metrics (Euclidean, Manhattan, Road 1.35x)
+│       ├── geo.h             # Weiszfeld geometric median solver
+│       ├── s_clust.h         # Demand-weighted K-Means & K-Medoids (PAM)
 │       ├── s_greedy.h        # Capacitated greedy assignment
-│       ├── s_ls.h            # Local search (add/drop/swap) & simulated annealing
-│       ├── s_exact.h         # Branch-and-bound exact MILP solver (proves global optimality)
+│       ├── s_ls.h            # Local Search (Add/Drop/Swap) & Simulated Annealing
+│       ├── s_exact.h         # Branch-and-bound MILP exact solver
 │       ├── sim.h             # Monte Carlo demand noise simulation
-│       └── fulfill.h         # Multi-depot vehicle routing (VRP) & wave dispatch
+│       └── fulfill.h         # Multi-depot VRP dispatch & wave planning
 │
-├── frontend/                 # React 19 + TypeScript + Vite + Tailwind + Leaflet + Recharts
+├── frontend/                 # React 19 + TypeScript + Vite + Tailwind CSS v4
 │   └── src/
-│       ├── App.tsx           # Page router & global navigation
-│       ├── pages/            # 14 specialized optimization and planning workspaces
-│       │   ├── Dashboard.tsx            # KPIs, cost breakdown, warehouse utilization
-│       │   ├── OptimizationWorkspace.tsx# Core optimizer + interactive map + B&B solver
-│       │   ├── AlgorithmComparison.tsx  # Side-by-side: Exact vs SA vs LS vs K-Means vs Greedy
-│       │   ├── DemandSimulation.tsx     # Monte Carlo uncertainty & distribution analysis
-│       │   ├── SensitivityAnalysis.tsx  # Growth rate & fuel price sweeps
-│       │   ├── Year.tsx                 # 365-day growth lab + AI narration
-│       │   ├── MapExplorer.tsx          # Full geospatial visualization
-│       │   ├── DataImport.tsx           # CSV upload + Bangalore seed dataset loader
-│       │   ├── Fulfillment.tsx          # Order waves, VRP trips, inventory ledger
-│       │   ├── Warehouses.tsx           # Warehouse registry management
-│       │   └── Tenants.tsx              # Multi-tenant shared logistics network
+│       ├── App.tsx           # App routing & navigation shell
+│       ├── components/       # ErrorBoundary, UI components, Sidebar, TopNav
+│       ├── pages/            # 14 specialized analytical dashboards
+│       │   ├── Dashboard.tsx            # Executive KPI cockpit
+│       │   ├── OptimizationWorkspace.tsx# Core optimizer, map canvas, k-sweep & Weiszfeld
+│       │   ├── AlgorithmComparison.tsx  # Side-by-side solver benchmark
+│       │   ├── DemandSimulation.tsx     # Monte Carlo uncertainty simulation
+│       │   ├── SensitivityAnalysis.tsx  # Fuel and growth rate elasticity sweeps
+│       │   ├── ScenarioManager.tsx      # Scenario manager & persistence
+│       │   ├── Year.tsx                 # 365-day year growth lab + AI narration
+│       │   ├── MapExplorer.tsx          # Geospatial explorer
+│       │   ├── DataImport.tsx           # CSV upload + Bangalore seed loader
+│       │   ├── Fulfillment.tsx          # VRP trip & inventory planner
+│       │   ├── Warehouses.tsx           # Warehouse candidate registry
+│       │   └── Tenants.tsx              # Multi-tenant cost-sharing optimization
 │       └── lib/
-│           ├── api.ts        # Typed fetch client
-│           └── store.tsx     # Global application state provider
+│           ├── api.ts        # Typed API client
+│           └── store.tsx     # Global reactive state provider
 │
 ├── data/
-│   └── sample.csv            # Sample dataset
+│   └── sample.csv            # Sample CSV dataset
+├── scripts/
+│   └── dev.js                # Single-command concurrent dev server
 ├── tests/
-│   ├── run.js                # 10 algorithmic verification tests
-│   └── year_test.js          # 365-day year growth test
+│   ├── run.js                # Algorithmic correctness verification suite
+│   └── year_test.js          # 365-day lifecycle growth simulation test
 └── README.md
 ```
 
 ---
 
-## 🚀 Quickstart
+## 📐 Mathematical Formulation
 
-### Prerequisites
+### 1. Capacitated Facility Location Problem (CFLP)
+
+Let $I = \{1, \dots, n\}$ be the set of demand neighborhoods and $J = \{1, \dots, m\}$ be the set of candidate warehouse locations.
+
+$$\min \sum_{j \in J} f_j y_j + \sum_{i \in I} \sum_{j \in J} c_{ij} x_{ij}$$
+
+**Subject to:**
+1. **Demand Satisfaction**: $\sum_{j \in J} x_{ij} = 1 \quad \forall i \in I$
+2. **Capacity Constraints**: $\sum_{i \in I} D_i x_{ij} \le C_j y_j \quad \forall j \in J$
+3. **Service Radius Constraint**: $d_{ij} x_{ij} \le R_{\max} \quad \forall i \in I, j \in J$
+4. **Hub Count Bounds**: $k_{\min} \le \sum_{j \in J} y_j \le k_{\max}$
+5. **Integrity**: $y_j \in \{0, 1\}, \quad x_{ij} \in \{0, 1\}$
+
+Where:
+- $f_j$: Fixed setup cost of opening warehouse $j$.
+- $D_i$: Daily order demand at neighborhood $i$.
+- $C_j$: Maximum order throughput capacity of warehouse $j$.
+- $c_{ij} = D_i \cdot d_{ij} \cdot \rho_{\text{vehicle}} \cdot \gamma_{\text{traffic}}$: Variable delivery cost from warehouse $j$ to neighborhood $i$.
+- $d_{ij}$: Distance between $i$ and $j$ under Euclidean, Manhattan, or Circuity Road Metric ($1.35\times$).
+
+---
+
+## 📍 Seed Dataset — South Bangalore
+
+The platform includes seed data representing **16 key neighborhoods** and **6 candidate hubs** in Bengaluru:
+
+| Area | Neighborhoods | Demand Profile |
+|---|---|---|
+| **Basavanagudi** | Gandhi Bazaar (420), DVG Road (310), Bull Temple Road (380), Tagore Park (190), Sajjan Rao Circle (260), NR Colony (230), Hanumanthanagar (175), VV Puram (345) | High commercial & retail density |
+| **Jayanagar** | 4th Block (500), 7th Block (440), 9th Block (390), RV Road (280), 11th Main (320), Tilak Nagar (210), Jayanagar East (185), 3rd Block (295) | High residential density |
+| **Candidate Hubs** | Basavanagudi Hub (Cap: 900), Jayanagar Dock (Cap: 1100), Gandhi Bazaar Depot (Cap: 700), DVG Road Point (Cap: 650), South Bangalore DC (Cap: 1400), 9th Block Node (Cap: 800) | Strategic arterial hubs |
+
+*The schema is fully location-agnostic and supports any arbitrary city, region, or abstract coordinate system.*
+
+---
+
+## ⚡ Quickstart & Local Setup
+
+### 1. Prerequisites
 - **Node.js** >= 18
-- **g++** >= 10 with C++17 support (MinGW on Windows, build-essential on Linux/macOS)
+- **g++** >= 10 with C++17 support (MinGW on Windows, `build-essential` on Linux / macOS)
 
-### 1. Compile C++ Optimization Core
+### 2. Compile C++ Optimization Core
 ```bash
 # Windows (PowerShell / Git Bash)
 cd cpp
@@ -79,58 +164,19 @@ g++ -std=c++17 -O2 -I include src/main.cpp -o wlopt
 cd ..
 ```
 
-### 2. Run Test Suite
+### 3. Run Algorithmic Tests
 ```bash
-node tests/run.js      # 10 algorithmic correctness tests (all pass)
-node tests/year_test.js # 365-day year growth simulation test
+npm test
 ```
+*Executes all 11 unit & integration tests validating Branch-and-Bound, Weiszfeld median, capacity enforcement, radius violations, and Monte Carlo simulation.*
 
-### 3. Start Backend
+### 4. Single-Command Concurrent Dev Server
 ```bash
-node backend/server.js  # Runs on http://localhost:4000
+npm run dev
 ```
-
-### 4. Start Frontend
-```bash
-cd frontend
-npm install
-npm run dev             # Runs on http://localhost:5173
-```
-
----
-
-## 📍 Seed Data — Basavanagudi & Jayanagar, Bangalore
-
-The platform comes pre-seeded with **16 real neighborhoods** and **6 candidate warehouse hubs** from South Bangalore:
-
-| Area | Neighborhoods | Demand Profile |
-|---|---|---|
-| **Basavanagudi** | Gandhi Bazaar (420), DVG Road (310), Bull Temple Road (380), Tagore Park (190), Sajjan Rao Circle (260), NR Colony (230), Hanumanthanagar (175), VV Puram (345) | High retail density |
-| **Jayanagar** | 4th Block (500), 7th Block (440), 9th Block (390), RV Road (280), 11th Main (320), Tilak Nagar (210), Jayanagar East (185), 3rd Block (295) | High residential density |
-| **Candidate Hubs** | Basavanagudi Hub (900 cap), Jayanagar Dock (1100 cap), Gandhi Bazaar Depot (700 cap), DVG Road Point (650 cap), South Bangalore DC (1400 cap), 9th Block Node (800 cap) | Scaled capacity |
-
-> **Location-Agnostic Design:** The schema uses a normalized coordinate interface `(id, name, x, y, demand, capacity, fixedCost)`. Any city's neighborhood data works without code changes.
-
-One-click load is available via the **Data Import** page in the UI, or via `GET /api/bengaluru`.
-
----
-
-## 📐 Mathematical Cost Model
-
-$$\text{totalDeliveryCost} = \sum_{i,j} (\text{distance}_{ij} \times \text{orders}_i \times \text{costPerKmPerOrder} \times \text{vehicleMultiplier}) + \sum_j \text{fuelCost}_j$$
-
-$$\text{totalInfraCost} = k \times \text{fixedSetupCostPerWarehouse}$$
-
-$$\text{grandTotal} = \text{totalDeliveryCost} + \text{totalInfraCost}$$
-
-### Optimization Algorithms Implemented
-1. **Branch-and-Bound (Exact MILP)** — Provably finds the global optimum over discrete candidate locations with exact capacitated assignment DFS.
-2. **Simulated Annealing** — 8,000-iteration stochastic metaheuristic avoiding local minima.
-3. **Local Search** — Add/Drop/Swap neighborhood search.
-4. **Demand-Weighted K-Means** — Fast clustering baseline with candidate snapping.
-5. **Demand-Weighted K-Medoids (PAM)** — Medoid-based clustering baseline.
-6. **Capacitated Greedy** — Demand-descending assignment with capacity and service radius enforcement.
-7. **Weiszfeld Geometric Median** — Continuous optimal single-warehouse placement minimizing $\sum D_i \cdot d_i$.
+*Simultaneously launches:*
+- **Backend API**: `http://localhost:4000`
+- **Frontend App**: `http://localhost:5173`
 
 ---
 
@@ -138,31 +184,38 @@ $$\text{grandTotal} = \text{totalDeliveryCost} + \text{totalInfraCost}$$
 
 | Endpoint | Method | Description |
 |---|---|---|
-| `/api/health` | GET | Health status, C++ binary path, DB connection, LLM status |
-| `/api/bengaluru` | GET | Real Basavanagudi & Jayanagar dataset |
-| `/api/demo` | GET | Synthetic demo dataset (seeded) |
-| `/api/optimize` | POST | Run optimization (`exact`, `annealing`, `localsearch`, `kmeans`, `greedy`) |
-| `/api/sweep` | POST | Cost sweep for $k = 1 \dots N$ (infrastructure vs delivery trade-off) |
-| `/api/compare` | POST | Side-by-side run of all 6 algorithms on the same dataset |
+| `/api/health` | GET | Health check, C++ engine binary path, Supabase connection, LLM status |
+| `/api/bengaluru`| GET | Seed Basavanagudi & Jayanagar dataset |
+| `/api/demo` | GET | Synthetic seeded benchmark dataset |
+| `/api/optimize` | POST | Execute optimization solver (`exact`, `annealing`, `localsearch`, `kmeans`, `greedy`, `median`) |
+| `/api/sweep` | POST | Compute infrastructure vs. delivery cost curve across $k = 1 \dots N$ |
+| `/api/compare` | POST | Benchmark all 6 algorithms side-by-side on the identical dataset |
 | `/api/simulate` | POST | Monte Carlo demand noise simulation ($E[C]$, P90, worst case) |
-| `/api/sensitivity` | POST | Fuel price and demand growth sensitivity curves |
-| `/api/median` | POST | Weiszfeld weighted geometric median vs centroid comparison |
-| `/api/year` | POST | 365-day growth lab: detects capacity bottleneck, proposes new warehouse |
-| `/api/narrate` | POST | AI narration of optimization results (OpenRouter / OpenAI) |
-| `/api/fulfill` | POST | Vehicle routing, wave dispatch, and order fulfillment plan |
-| `/api/tenants` | POST | Multi-tenant shared warehouse cost allocation |
+| `/api/sensitivity` | POST | Fuel price and demand growth elasticity sweeps |
+| `/api/median` | POST | Continuous Weiszfeld Fermat-Weber geometric median point |
+| `/api/year` | POST | 365-day growth simulation detecting capacity bottlenecks and recommending new hubs |
+| `/api/narrate` | POST | AI natural language executive briefing (OpenRouter / OpenAI) |
+| `/api/fulfill` | POST | Operational multi-depot vehicle routing and wave dispatch plan |
+| `/api/tenants` | POST | Multi-tenant shared logistics network cost allocation |
 
 ---
 
-## 🤖 AI Assistance & Tool Disclosure
+## 🚢 Cloud Deployment Guide
 
-In compliance with hackathon rules, the following AI tools and open-source libraries were used in the creation of GRIDPOINT:
+### Backend (Railway / Render / Fly.io)
+1. Point to the repository root.
+2. Build command:
+   ```bash
+   cd cpp && g++ -std=c++17 -O2 -I include src/main.cpp -o wlopt && cd ..
+   ```
+3. Start command:
+   ```bash
+   node backend/server.js
+   ```
+4. Environment variables: `PORT=4000`, `SUPABASE_PROJECT_ID`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_KEY`, `OPENROUTER_API_KEY`.
 
-| Component | Tool / Library Used | Purpose |
-|---|---|---|
-| **Code Generation & Architecture** | Claude Code (Anthropic) | Full-stack scaffolding, API integration, test orchestration |
-| **LLM Narration** | OpenRouter (`openrouter/auto`) / OpenAI (`gpt-4o-mini`) | Natural language explanations of optimization runs and growth forecasts |
-| **Database & Auth** | Supabase (PostgreSQL REST API) | Run history, dataset persistence, user accounts |
-| **UI Components** | Tailwind CSS v4, Lucide React, Recharts | Data visualization, charts, responsive layouts |
-| **Geospatial & Maps** | Custom SVG Map Canvas + Leaflet | Location-agnostic visual network representation |
-| **JSON Parser** | `nlohmann/json` single-header | C++ JSON serialization/deserialization |
+### Frontend (Vercel / Netlify)
+1. Root directory: `frontend`
+2. Build command: `npm run build`
+3. Output directory: `dist`
+4. Environment variable: `VITE_API_BASE_URL=https://your-backend-domain.com`

@@ -95,15 +95,24 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     catch { return DEFAULT_PREFS; }
   });
 
+  const saveDataset = useCallback((nextNb: NB[], nextWh: WH[]) => {
+    setNb(nextNb); setWh(nextWh); setLoaded(true);
+    try {
+      localStorage.setItem('wlo_dataset', JSON.stringify({ nb: nextNb, wh: nextWh }));
+    } catch (e) {
+      console.warn('Failed to persist dataset to localStorage', e);
+    }
+  }, []);
+
   const loadDemo = useCallback(async () => {
     setLoading(true);
     try {
       const d = await api.demo();
-      setNb(d.neighborhoods.map(n => ({...n, demand: n.demand || 100, name: 'N-' + n.id})));
-      setWh(d.candidates.map(w => ({...w, name: 'Dock ' + w.id})));
-      setLoaded(true);
+      const nextNb = d.neighborhoods.map(n => ({...n, demand: n.demand || 100, name: 'N-' + n.id}));
+      const nextWh = d.candidates.map(w => ({...w, name: 'Dock ' + w.id}));
+      saveDataset(nextNb, nextWh);
     } finally { setLoading(false); }
-  }, []);
+  }, [saveDataset]);
 
   const loadBengaluru = useCallback(async () => {
     setLoading(true);
@@ -114,11 +123,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       saveDataset(nextNb, nextWh);
     } finally { setLoading(false); }
   }, [saveDataset]);
-
-  const saveDataset = useCallback((nextNb: NB[], nextWh: WH[]) => {
-    setNb(nextNb); setWh(nextWh); setLoaded(true);
-    localStorage.setItem('wlo_dataset', JSON.stringify({ nb: nextNb, wh: nextWh }));
-  }, []);
 
   const loadSynthetic = useCallback(async (size = 56, seed = 56, authToken?: string, warehouseCapacity?: number) => {
     setLoading(true);

@@ -1,4 +1,4 @@
-import React, { useState, Component, type ErrorInfo, type ReactNode } from 'react';
+import React, { useState } from 'react';
 import { Sidebar, type Page } from '@/components/layout/Sidebar';
 import { TopNav } from '@/components/layout/TopNav';
 import { LandingPage } from '@/pages/LandingPage';
@@ -19,41 +19,7 @@ import { Tenants } from '@/pages/Tenants';
 import { Year } from '@/pages/Year';
 import { cn } from '@/lib/utils';
 import { useStore } from '@/lib/store';
-import { AlertTriangle, RefreshCw } from 'lucide-react';
-import { Button } from '@/components/ui/Button';
-
-class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; error: Error | null }> {
-  constructor(props: { children: ReactNode }) {
-    super(props);
-    this.state = { hasError: false, error: null };
-  }
-
-  static getDerivedStateFromError(error: Error) {
-    return { hasError: true, error };
-  }
-
-  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('UI Error caught by ErrorBoundary:', error, errorInfo);
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div className="h-full flex flex-col items-center justify-center p-6 bg-[#0a0a0f] text-center">
-          <div className="w-12 h-12 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-400 mb-4">
-            <AlertTriangle size={24} />
-          </div>
-          <h2 className="text-lg font-semibold text-white mb-1">Component Error</h2>
-          <p className="text-xs text-[#6b6b80] max-w-md mb-4">{this.state.error?.message || 'An unexpected error occurred while rendering this page.'}</p>
-          <Button variant="primary" size="sm" onClick={() => this.setState({ hasError: false, error: null })}>
-            <RefreshCw size={13} /> Try Again
-          </Button>
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 function AppPage({ page, navigate }: { page: Page; navigate: (p: Page) => void }) {
   switch (page) {

@@ -1,59 +1,162 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { Card, CardHeader, CardBody } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { fmtCurrency, fmtPct } from '@/lib/utils';
 import {
   Play, X, CheckCircle2, AlertTriangle,
-  Loader2, Info, ChevronDown
+  Loader2, Info, ChevronDown, Truck, Fuel, Clock,
+  TrendingUp, Compass, BarChart3, Layers, SlidersHorizontal,
+  Maximize2, ArrowRight, ShieldAlert, Sparkles, MapPin
 } from 'lucide-react';
 import { useStore } from '@/lib/store';
 import { api, type Params, type OptResult, type Point, type Candidate } from '@/lib/api';
+import {
+  LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip,
+  Legend, CartesianGrid, ResponsiveContainer, ReferenceLine
+} from 'recharts';
 
-type AlgoKey = 'greedy' | 'kmedoids' | 'localsearch' | 'annealing' | 'exact' | 'kmeans';
-const ALGORITHMS: { key: AlgoKey; label: string }[] = [
-  { key: 'exact',      label: 'Exact (branch & bound)' },
-  { key: 'annealing',   label: 'Simulated Annealing' },
-  { key: 'localsearch', label: 'Local Search' },
-  { key: 'kmedoids',    label: 'K-Medoids' },
-  { key: 'kmeans',      label: 'K-Means' },
-  { key: 'greedy',      label: 'Greedy' },
+type AlgoKey = 'exact' | 'annealing' | 'localsearch' | 'kmedoids' | 'kmeans' | 'greedy' | 'median';
+
+const ALGORITHMS: { key: AlgoKey; label: string; desc: string }[] = [
+  { key: 'exact',       label: 'Branch & Bound (MILP)', desc: 'Guaranteed mathematical global optimum via branch-and-bound' },
+  { key: 'annealing',   label: 'Simulated Annealing',   desc: 'Probabilistic metaheuristic exploring 8,000 temperature states' },
+  { key: 'localsearch', label: 'Local Search (Add/Drop/Swap)', desc: 'Fast iterative neighborhood improvement' },
+  { key: 'kmedoids',    label: 'Demand-Weighted K-Medoids', desc: 'PAM clustering restricted to warehouse candidate sites' },
+  { key: 'kmeans',      label: 'Demand-Weighted K-Means', desc: 'Continuous cluster centroids snapped to candidate hubs' },
+  { key: 'greedy',      label: 'Capacitated Greedy',    desc: 'Iteratively opens docks with maximum demand coverage' },
+  { key: 'median',      label: 'Weiszfeld Geometric Median (k=1)', desc: 'Iterative Fermat-Weber median minimizing total weighted distance' },
 ];
+
 const DIST_METRICS = [
-  { key: 'euclidean', label: 'Euclidean (straight-line)' },
-  { key: 'manhattan', label: 'Manhattan (grid)' },
-  { key: 'road',      label: 'Road (×1.35 factor)' },
+  { key: 'euclidean', label: 'Euclidean (Straight-Line, L2)' },
+  { key: 'manhattan', label: 'Manhattan Grid (L1 Metric)' },
+  { key: 'road',      label: 'Road Network (1.35x Circuity Multiplier)' },
+];
+
+// Vehicle fleet profiles
+export interface VehicleType {
+  id: string;
+  name: string;
+  icon: string;
+  capacity: number; // max units
+  baseCostPerKm: number; // $/km or ₹/km base operating cost
+  fuelEfficiencyKmPerL: number; // km per liter
+}
+
+const VEHICLE_TYPES: VehicleType[] = [
+  { id: 'bike',        name: 'Two-Wheeler / Electric Bike', icon: '🛵', capacity: 40,   baseCostPerKm: 0.6, fuelEfficiencyKmPerL: 45 },
+  { id: 'ev_van',      name: 'Electric Cargo Van',          icon: '🚐', capacity: 250,  baseCostPerKm: 1.2, fuelEfficiencyKmPerL: 20 },
+  { id: 'diesel_van',  name: 'Standard Diesel Van',         icon: '🚚', capacity: 500,  baseCostPerKm: 1.6, fuelEfficiencyKmPerL: 10 },
+  { id: 'truck_14ft',  name: 'Heavy 14ft Truck',            icon: '🚛', capacity: 1200, baseCostPerKm: 2.8, fuelEfficiencyKmPerL: 4.5 },
+];
+
+// Traffic condition profiles
+export interface TrafficProfile {
+  id: string;
+  name: string;
+  timeMultiplier: number; // delivery time multiplier
+  roadMultiplier: number; // congestion circuity multiplier
+  badge: string;
+}
+
+const TRAFFIC_PROFILES: TrafficProfile[] = [
+  { id: 'offpeak',      name: 'Off-Peak / Night (Free Flow)',        timeMultiplier: 0.85, roadMultiplier: 1.00, badge: '🌙 Off-Peak' },
+  { id: 'normal',       name: 'Normal Daylight (Standard)',          timeMultiplier: 1.00, roadMultiplier: 1.00, badge: '☀️ Normal' },
+  { id: 'rush_morning', name: 'Morning Rush Hour (8:30 - 11:00 AM)', timeMultiplier: 1.50, roadMultiplier: 1.15, badge: '🚗 Morning Peak' },
+  { id: 'rush_evening', name: 'Evening Peak Hour (5:30 - 8:30 PM)',  timeMultiplier: 1.75, roadMultiplier: 1.25, badge: '🚦 Evening Peak' },
+  { id: 'monsoon',      name: 'Monsoon / Heavy Rain Congestion',     timeMultiplier: 2.00, roadMultiplier: 1.35, badge: '🌧️ Weather Alert' },
 ];
 
 export function OptimizationWorkspace() {
-  const { nb, wh, loaded, loading: storeLoading } = useStore();
+  const { nb, wh, loaded } = useStore();
+
+  // Core settings
   const [algo, setAlgo] = useState<AlgoKey>('exact');
-  const [dist, setDist] = useState<string>('euclidean');
+  const [dist, setDist] = useState<string>('road');
   const [radius, setRadius] = useState<number>(60);
-  const [costPerKm, setCostPerKm] = useState<number>(2);
-  const [capacity, setCapacity] = useState<number>(() => wh[0]?.capacity || 800);
+  const [capacity, setCapacity] = useState<number>(() => wh[0]?.capacity || 900);
   const [fixedCost, setFixedCost] = useState<number>(1500);
   const [minW, setMinW] = useState<number>(1);
-  const [maxW, setMaxW] = useState<number>(5);
-  const [ran, setRan] = useState(false);
+  const [maxW, setMaxW] = useState<number>(4);
+
+  // Advanced / Bonus settings
+  const [selectedVehicle, setSelectedVehicle] = useState<string>('diesel_van');
+  const [fuelPrice, setFuelPrice] = useState<number>(1.40); // $/L or ₹/L
+  const [trafficProfile, setTrafficProfile] = useState<string>('normal');
+  const [demandGrowthPct, setDemandGrowthPct] = useState<number>(0);
+
+  // Active view tab
+  const [activeTab, setActiveTab] = useState<'map' | 'baseline' | 'sweep' | 'median'>('map');
+
+  // Execution state
   const [running, setRunning] = useState(false);
+  const [ran, setRan] = useState(false);
   const [result, setResult] = useState<OptResult | null>(null);
   const [err, setErr] = useState<string | null>(null);
+
+  // Sweep and Median results
+  const [sweepData, setSweepData] = useState<any[]>([]);
+  const [sweepLoading, setSweepLoading] = useState(false);
+  const [medianResult, setMedianResult] = useState<{ x: number; y: number; nearestWarehouse: string; distanceToNearest: number } | null>(null);
+
+  // Map state
   const [mapZoom, setMapZoom] = useState(1);
   const [mapSelection, setMapSelection] = useState<{ kind: 'demand' | 'warehouse'; id: string; label: string; detail: string } | null>(null);
 
+  // Compute effective delivery cost per km taking vehicle type, fuel price, and traffic into account
+  const currentVehicle = useMemo(() => VEHICLE_TYPES.find(v => v.id === selectedVehicle) || VEHICLE_TYPES[2], [selectedVehicle]);
+  const currentTraffic = useMemo(() => TRAFFIC_PROFILES.find(t => t.id === trafficProfile) || TRAFFIC_PROFILES[1], [trafficProfile]);
+
+  const fuelCostPerKm = useMemo(() => {
+    return +(fuelPrice / currentVehicle.fuelEfficiencyKmPerL).toFixed(3);
+  }, [fuelPrice, currentVehicle]);
+
+  const effectiveCostPerKm = useMemo(() => {
+    return +(currentVehicle.baseCostPerKm + fuelCostPerKm).toFixed(3);
+  }, [currentVehicle, fuelCostPerKm]);
+
+  // Scaled neighborhoods with demand growth applied
+  const scaledNb = useMemo(() => {
+    const factor = 1 + (demandGrowthPct / 100);
+    return nb.map(n => ({
+      ...n,
+      demand: Math.max(1, Math.round(n.demand * factor)),
+    }));
+  }, [nb, demandGrowthPct]);
+
+  // Main Optimization Runner
   const run = useCallback(async () => {
-    if (!loaded || !nb.length) return;
-    setRunning(true); setErr(null); setRan(false);
+    if (!loaded || !scaledNb.length || !wh.length) return;
+    setRunning(true);
+    setErr(null);
+    setRan(false);
+
     try {
+      if (algo === 'median') {
+        // Calculate Weiszfeld geometric median
+        const out = await api.median({ neighborhoods: scaledNb });
+        setMedianResult({
+          x: out.x,
+          y: out.y,
+          nearestWarehouse: out.nearestWarehouse,
+          distanceToNearest: out.distanceToNearest,
+        });
+        setActiveTab('median');
+        setRan(true);
+        setRunning(false);
+        return;
+      }
+
       const out = await api.optimize({
-        neighborhoods: nb,
+        neighborhoods: scaledNb,
         candidates: wh,
         params: {
           algorithm: algo,
           distanceMetric: dist,
           maxServiceRadius: radius,
-          deliveryCostPerKm: costPerKm,
+          deliveryCostPerKm: effectiveCostPerKm,
+          roadFactor: (dist === 'road' ? 1.35 : 1.0) * currentTraffic.roadMultiplier,
           capacity,
           fixedCost,
           minWarehouses: minW,
@@ -61,29 +164,58 @@ export function OptimizationWorkspace() {
         },
         explain: true,
       });
-      setResult(out); setRan(true);
-      if (out.optimal === false && !out.algorithmUsed.includes('exact')) {
-        // best effort
-      }
+
+      setResult(out);
+      setRan(true);
     } catch (e: any) {
-      setErr(e.message || 'Optimization failed');
-    } finally { setRunning(false); }
-  }, [loaded, nb, wh, algo, dist, radius, costPerKm, capacity, fixedCost, minW, maxW]);
+      setErr(e.message || 'Optimization solver failed');
+    } finally {
+      setRunning(false);
+    }
+  }, [loaded, scaledNb, wh, algo, dist, radius, effectiveCostPerKm, currentTraffic, capacity, fixedCost, minW, maxW]);
 
-  if (!loaded) return (
-    <div className="h-full flex items-center justify-center bg-[#0a0a0f] text-[#6b6b80] text-xs">
-      <Loader2 className="animate-spin mr-2" size={14} />Loading dataset...
-    </div>
-  );
+  // Run Trade-off Sweep k = 1..N
+  const runSweep = useCallback(async () => {
+    if (!loaded || !scaledNb.length || !wh.length) return;
+    setSweepLoading(true);
+    try {
+      const out = await api.sweep({
+        neighborhoods: scaledNb,
+        candidates: wh,
+        fixedSetupCost: fixedCost,
+        maxK: Math.min(wh.length, 8),
+        params: {
+          deliveryCostPerKm: effectiveCostPerKm,
+          maxServiceRadius: radius,
+          distanceMetric: dist,
+          roadFactor: (dist === 'road' ? 1.35 : 1.0) * currentTraffic.roadMultiplier,
+        },
+      });
+      setSweepData(out.sweep);
+      setActiveTab('sweep');
+    } catch (e: any) {
+      setErr(e.message || 'Sweep calculation failed');
+    } finally {
+      setSweepLoading(false);
+    }
+  }, [loaded, scaledNb, wh, fixedCost, effectiveCostPerKm, radius, dist, currentTraffic]);
 
-  if (err) return (
-    <div className="h-full flex items-center justify-center bg-[#0a0a0f]">
-      <Card className="max-w-md"><CardBody>
-        <div className="flex items-center gap-2 text-amber-400 text-xs mb-3"><AlertTriangle size={14}/>{err}</div>
-        <Button variant="primary" size="sm" onClick={run}>Try again</Button>
-      </CardBody></Card>
-    </div>
-  );
+  // Run Weiszfeld Median
+  const runWeiszfeld = useCallback(async () => {
+    if (!loaded || !scaledNb.length) return;
+    try {
+      const out = await api.median({ neighborhoods: scaledNb });
+      setMedianResult({
+        x: out.x,
+        y: out.y,
+        nearestWarehouse: out.nearestWarehouse,
+        distanceToNearest: out.distanceToNearest,
+      });
+      setActiveTab('median');
+    } catch (e: any) {
+      setErr(e.message || 'Weiszfeld computation failed');
+    }
+  }, [loaded, scaledNb]);
 
   const whList = result?.utilization?.map(u => {
     const w = wh.find(x => x.id === u.id);
@@ -91,208 +223,665 @@ export function OptimizationWorkspace() {
   }) || [];
 
   return (
-    <div className="h-full min-h-0 flex">
-      {/* Left: controls + map */}
-      <div className="flex-1 min-h-0 overflow-y-auto border-r border-[#1e1e2e] min-w-0">
-        {/* Params bar */}
-        <div className="p-3 border-b border-[#1e1e2e] bg-[#0d0d16] space-y-3">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h1 className="text-base font-semibold text-white">Plan your warehouse network</h1>
-              <p className="text-xs text-[#8080a0] mt-0.5">Choose limits, then run the optimizer to find the lowest-cost plan.</p>
-            </div>
-            <details className="group relative shrink-0">
-              <summary className="list-none cursor-pointer rounded-md border border-[#2a2a3a] px-3 py-2 text-xs text-blue-300 hover:bg-blue-500/10">What do these settings mean?</summary>
-              <div className="absolute right-0 top-10 z-20 w-80 rounded-lg border border-[#2a2a3a] bg-[#111118] p-3 text-xs leading-relaxed text-[#c0c0d0] shadow-xl">
-                <strong className="text-white">Min / Max warehouses</strong> sets the allowed number of warehouses to open. <strong className="text-white">Service radius</strong> is the farthest distance a warehouse can serve. <strong className="text-white">Capacity</strong> is the maximum demand each warehouse can handle. Start with Min 1 and Max 5, then compare results.
-              </div>
-            </details>
+    <div className="h-full min-h-0 flex flex-col md:flex-row overflow-hidden bg-[#0a0a0f]">
+      {/* Left Column: Controls & Configuration */}
+      <div className="w-full md:w-96 flex-shrink-0 border-r border-[#1e1e2e] bg-[#0d0d16] flex flex-col h-full overflow-y-auto">
+        <div className="p-4 border-b border-[#1e1e2e]">
+          <div className="flex items-center justify-between">
+            <h1 className="text-sm font-semibold text-white flex items-center gap-2">
+              <SlidersHorizontal size={15} className="text-blue-400" />
+              Optimizer Controls
+            </h1>
+            <Badge variant="muted">{wh.length} candidate hubs</Badge>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <div className="flex-1 min-w-[120px]">
-              <label className="text-[10px] font-mono text-[#4a4a60] block mb-1">Algorithm</label>
+          <p className="text-[11px] text-[#6b6b80] mt-1">
+            Capacitated Facility Location with multi-vehicle & traffic routing
+          </p>
+        </div>
+
+        <div className="p-4 space-y-4 flex-1">
+          {/* Algorithm Selector */}
+          <div>
+            <label className="text-[10px] font-mono uppercase tracking-wider text-[#8080a0] block mb-1">
+              Optimization Algorithm
+            </label>
+            <div className="relative">
+              <select
+                value={algo}
+                onChange={e => setAlgo(e.target.value as AlgoKey)}
+                className="w-full appearance-none px-3 py-2 rounded text-xs bg-[#111118] border border-[#1e1e2e] text-[#e0e0f0] focus:border-blue-500/60 focus:outline-none"
+              >
+                {ALGORITHMS.map(a => (
+                  <option key={a.key} value={a.key}>
+                    {a.label}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#4a4a60] pointer-events-none" />
+            </div>
+            <p className="text-[10px] text-[#4a4a60] mt-1">
+              {ALGORITHMS.find(a => a.key === algo)?.desc}
+            </p>
+          </div>
+
+          {/* Warehouse Count Bounds */}
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-[10px] font-mono text-[#8080a0] block mb-1">Min Warehouses (k)</label>
+              <input
+                type="number"
+                min={1}
+                max={maxW}
+                value={minW}
+                onChange={e => setMinW(Math.max(1, Math.min(+e.target.value, maxW)))}
+                className="w-full px-2.5 py-1.5 rounded text-xs bg-[#111118] border border-[#1e1e2e] text-white font-mono focus:border-blue-500/50 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-mono text-[#8080a0] block mb-1">Max Warehouses (k)</label>
+              <input
+                type="number"
+                min={minW}
+                max={wh.length}
+                value={maxW}
+                onChange={e => setMaxW(Math.max(minW, Math.min(+e.target.value, wh.length)))}
+                className="w-full px-2.5 py-1.5 rounded text-xs bg-[#111118] border border-[#1e1e2e] text-white font-mono focus:border-blue-500/50 focus:outline-none"
+              />
+            </div>
+          </div>
+
+          {/* Capacity & Service Radius Constraints */}
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-[10px] font-mono text-[#8080a0] block mb-1">Max Radius (km)</label>
+              <input
+                type="number"
+                min={1}
+                value={radius}
+                onChange={e => setRadius(Math.max(1, +e.target.value))}
+                className="w-full px-2.5 py-1.5 rounded text-xs bg-[#111118] border border-[#1e1e2e] text-white font-mono focus:border-blue-500/50 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-mono text-[#8080a0] block mb-1">Capacity / Hub</label>
+              <input
+                type="number"
+                min={10}
+                value={capacity}
+                onChange={e => setCapacity(Math.max(10, +e.target.value))}
+                className="w-full px-2.5 py-1.5 rounded text-xs bg-[#111118] border border-[#1e1e2e] text-white font-mono focus:border-blue-500/50 focus:outline-none"
+              />
+            </div>
+          </div>
+
+          {/* Fixed Hub Setup Cost & Distance Metric */}
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-[10px] font-mono text-[#8080a0] block mb-1">Fixed Cost / Hub ($)</label>
+              <input
+                type="number"
+                min={0}
+                value={fixedCost}
+                onChange={e => setFixedCost(Math.max(0, +e.target.value))}
+                className="w-full px-2.5 py-1.5 rounded text-xs bg-[#111118] border border-[#1e1e2e] text-white font-mono focus:border-blue-500/50 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-mono text-[#8080a0] block mb-1">Distance Metric</label>
               <div className="relative">
-                <select value={algo} onChange={e => setAlgo(e.target.value as AlgoKey)}
-                  className="w-full appearance-none px-2 py-1.5 rounded text-xs bg-[#111118] border border-[#1e1e2e] text-[#c0c0d0] focus:border-blue-500/40">
-                  {ALGORITHMS.map(a => <option key={a.key} value={a.key}>{a.label}</option>)}
+                <select
+                  value={dist}
+                  onChange={e => setDist(e.target.value)}
+                  className="w-full appearance-none px-2 py-1.5 rounded text-xs bg-[#111118] border border-[#1e1e2e] text-[#e0e0f0] focus:border-blue-500/50 focus:outline-none"
+                >
+                  {DIST_METRICS.map(d => (
+                    <option key={d.key} value={d.key}>
+                      {d.label}
+                    </option>
+                  ))}
                 </select>
-                <ChevronDown size={12} className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[#3a3a50]" />
+                <ChevronDown size={12} className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[#4a4a60] pointer-events-none" />
               </div>
             </div>
-            <div className="flex-1 min-w-[120px]">
-              <label className="text-[10px] font-mono text-[#4a4a60] block mb-1">Distance</label>
+          </div>
+
+          {/* Vehicle Fleet Type Picker (Bonus 4) */}
+          <div className="pt-2 border-t border-[#1e1e2e]">
+            <label className="text-[10px] font-mono uppercase tracking-wider text-blue-400 flex items-center gap-1 mb-1.5">
+              <Truck size={12} /> Vehicle Type & Cost Profile
+            </label>
+            <div className="grid grid-cols-2 gap-1.5">
+              {VEHICLE_TYPES.map(v => (
+                <button
+                  key={v.id}
+                  onClick={() => setSelectedVehicle(v.id)}
+                  className={`p-2 rounded text-left border transition-all ${
+                    selectedVehicle === v.id
+                      ? 'bg-blue-600/15 border-blue-500/40 text-white'
+                      : 'bg-[#111118] border-[#1e1e2e] text-[#8080a0] hover:text-white hover:border-[#2a2a3a]'
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5 text-xs font-medium">
+                    <span>{v.icon}</span>
+                    <span className="truncate">{v.name.split('/')[0]}</span>
+                  </div>
+                  <div className="text-[10px] font-mono text-[#6b6b80] mt-0.5">
+                    Cap: {v.capacity} | ${v.baseCostPerKm}/km
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Fuel & Traffic Conditions (Bonus 5 & 6) */}
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-[10px] font-mono text-[#8080a0] flex items-center gap-1 mb-1">
+                <Fuel size={11} className="text-amber-400" /> Fuel Price ($/L)
+              </label>
+              <input
+                type="number"
+                step="0.05"
+                min={0}
+                value={fuelPrice}
+                onChange={e => setFuelPrice(Math.max(0, +e.target.value))}
+                className="w-full px-2.5 py-1.5 rounded text-xs bg-[#111118] border border-[#1e1e2e] text-white font-mono focus:border-blue-500/50 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-mono text-[#8080a0] flex items-center gap-1 mb-1">
+                <Clock size={11} className="text-purple-400" /> Traffic Multiplier
+              </label>
               <div className="relative">
-                <select value={dist} onChange={e => setDist(e.target.value)}
-                  className="w-full appearance-none px-2 py-1.5 rounded text-xs bg-[#111118] border border-[#1e1e2e] text-[#c0c0d0] focus:border-blue-500/40">
-                  {DIST_METRICS.map(d => <option key={d.key} value={d.key}>{d.label}</option>)}
+                <select
+                  value={trafficProfile}
+                  onChange={e => setTrafficProfile(e.target.value)}
+                  className="w-full appearance-none px-2 py-1.5 rounded text-xs bg-[#111118] border border-[#1e1e2e] text-[#e0e0f0] focus:border-blue-500/50 focus:outline-none"
+                >
+                  {TRAFFIC_PROFILES.map(t => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
                 </select>
-                <ChevronDown size={12} className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[#3a3a50]" />
+                <ChevronDown size={12} className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[#4a4a60] pointer-events-none" />
               </div>
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-2">
-            <div>
-              <label className="text-[10px] font-mono text-[#8080a0] block mb-1">Service radius (km)</label>
-              <input type="number" value={radius} onChange={e => setRadius(+e.target.value)}
-                className="w-full px-2 py-1 rounded text-xs bg-[#111118] border border-[#1e1e2e] text-white font-mono focus:border-blue-500/40" />
+
+          {/* Effective Cost Preview Badge */}
+          <div className="p-2.5 rounded bg-[#111118] border border-[#1e1e2e] flex items-center justify-between text-xs font-mono">
+            <span className="text-[#6b6b80]">Landed Transit Rate:</span>
+            <span className="text-emerald-400 font-semibold">${effectiveCostPerKm}/km</span>
+          </div>
+
+          {/* Demand Growth Scenario Slider (Bonus 7) */}
+          <div className="pt-2 border-t border-[#1e1e2e]">
+            <div className="flex justify-between text-xs mb-1">
+              <span className="text-[#8080a0] flex items-center gap-1 font-mono text-[10px] uppercase">
+                <TrendingUp size={12} className="text-emerald-400" /> Demand Growth Horizon
+              </span>
+              <span className="font-mono text-white text-xs">
+                {demandGrowthPct > 0 ? `+${demandGrowthPct}%` : demandGrowthPct < 0 ? `${demandGrowthPct}%` : 'Baseline (0%)'}
+              </span>
             </div>
-            <div>
-              <label className="text-[10px] font-mono text-[#8080a0] block mb-1">Delivery cost ($/km)</label>
-              <input type="number" step="0.1" value={costPerKm} onChange={e => setCostPerKm(+e.target.value)}
-                className="w-full px-2 py-1 rounded text-xs bg-[#111118] border border-[#1e1e2e] text-white font-mono focus:border-blue-500/40" />
-            </div>
-            <div>
-              <label className="text-[10px] font-mono text-[#8080a0] block mb-1">Capacity per warehouse</label>
-              <input type="number" value={capacity} onChange={e => setCapacity(+e.target.value)}
-                className="w-full px-2 py-1 rounded text-xs bg-[#111118] border border-[#1e1e2e] text-white font-mono focus:border-blue-500/40" />
-            </div>
-            <div>
-              <label className="text-[10px] font-mono text-[#8080a0] block mb-1">Fixed cost ($)</label>
-              <input type="number" value={fixedCost} onChange={e => setFixedCost(+e.target.value)}
-                className="w-full px-2 py-1 rounded text-xs bg-[#111118] border border-[#1e1e2e] text-white font-mono focus:border-blue-500/40" />
-            </div>
-            <div>
-              <label className="text-[10px] font-mono text-[#8080a0] block mb-1">Minimum warehouses</label>
-              <input type="number" min={1} max={maxW} value={minW} onChange={e => setMinW(Math.min(+e.target.value, maxW))}
-                className="w-full px-2 py-1 rounded text-xs bg-[#111118] border border-[#1e1e2e] text-white font-mono focus:border-blue-500/40" />
-            </div>
-            <div>
-              <label className="text-[10px] font-mono text-[#8080a0] block mb-1">Maximum warehouses</label>
-              <input type="number" min={minW} max={wh.length} value={maxW} onChange={e => setMaxW(Math.max(minW, Math.min(+e.target.value, wh.length)))}
-                className="w-full px-2 py-1 rounded text-xs bg-[#111118] border border-[#1e1e2e] text-white font-mono focus:border-blue-500/40" />
+            <input
+              type="range"
+              min={-20}
+              max={100}
+              step={5}
+              value={demandGrowthPct}
+              onChange={e => setDemandGrowthPct(+e.target.value)}
+              className="w-full h-1.5 bg-[#1e1e2e] rounded-lg appearance-none cursor-pointer accent-blue-500"
+            />
+            <div className="flex justify-between text-[10px] font-mono text-[#4a4a60] mt-1">
+              <span>-20% (Downturn)</span>
+              <span>Baseline</span>
+              <span>+100% (2x)</span>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Button variant="primary" size="sm" loading={running} onClick={run} className="flex-1">
-              <Play size={13} />{running ? 'Optimizing...' : 'Run Optimization'}
+
+          {/* Action Buttons */}
+          <div className="pt-3 border-t border-[#1e1e2e] space-y-2">
+            <Button
+              variant="primary"
+              size="md"
+              loading={running}
+              onClick={run}
+              className="w-full flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20"
+            >
+              <Play size={14} />
+              {running ? 'Solving MILP Formulation...' : 'Run Optimization'}
             </Button>
-            {ran && <Button variant="ghost" size="sm" onClick={() => { setRan(false); setResult(null); }}><X size={13}/>Clear</Button>}
+
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                loading={sweepLoading}
+                onClick={runSweep}
+                className="text-[11px] flex items-center justify-center gap-1"
+                title="Sweep k=1..N to find optimal infrastructure vs delivery trade-off curve"
+              >
+                <BarChart3 size={13} />
+                k-Sweep Curve
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={runWeiszfeld}
+                className="text-[11px] flex items-center justify-center gap-1"
+                title="Find continuous demand-weighted geometric median center"
+              >
+                <Compass size={13} />
+                Weiszfeld (k=1)
+              </Button>
+            </div>
           </div>
         </div>
-
-        {/* Map */}
-        <div className="h-[560px] p-3">
-          <div className="relative w-full h-full rounded-lg overflow-hidden border border-[#1e1e2e] bg-[#0a0f1a]">
-            <WloMapSVG neighborhoods={nb} warehouses={wh} result={result} zoom={mapZoom} onSelect={setMapSelection} />
-            <div className="absolute top-3 right-3 z-10 flex gap-1">
-              <button onClick={() => setMapZoom(z => Math.min(2.2, +(z + 0.2).toFixed(1)))} className="h-8 w-8 rounded border border-[#2a2a3a] bg-[#111118] text-white hover:bg-[#1a1a24]" title="Zoom in">+</button>
-              <button onClick={() => setMapZoom(z => Math.max(1, +(z - 0.2).toFixed(1)))} className="h-8 w-8 rounded border border-[#2a2a3a] bg-[#111118] text-white hover:bg-[#1a1a24]" title="Zoom out">−</button>
-              <button onClick={() => { setMapZoom(1); setMapSelection(null); }} className="rounded border border-[#2a2a3a] bg-[#111118] px-2 text-xs text-[#c0c0d0] hover:bg-[#1a1a24]">Reset</button>
-            </div>
-            {/* status pill */}
-            <div className="absolute top-3 left-3 z-10">
-              {ran && result ? (
-                <div className={`px-2.5 py-1 rounded-full text-[10px] font-mono border flex items-center gap-1.5 ${
-                  result.optimal ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-blue-500/10 border-blue-500/20 text-blue-400'
-                }`}>
-                  <CheckCircle2 size={10} />{result.optimal ? 'Optimal · MILP' : 'Heuristic · ' + result.algorithmUsed}
-                </div>
-              ) : <div className="px-2.5 py-1 rounded-full text-[10px] font-mono bg-[#111118] border border-[#1e1e2e] text-[#4a4a60]">Config & run</div>}
-            </div>
-            {result?.unserved && result.unserved.length > 0 && (
-              <div className="absolute top-14 right-3 z-10 px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 text-[10px] font-mono flex items-center gap-1">
-                <AlertTriangle size={10} />{result.unserved.length} unserved
-              </div>
-            )}
-            <div className="absolute bottom-3 left-3 z-10 rounded-md border border-[#2a2a3a] bg-[#111118]/95 px-3 py-2 text-[10px] text-[#c0c0d0] shadow-lg">
-              <div className="mb-1 font-semibold text-white">Map guide</div>
-              <div className="flex flex-wrap gap-x-3 gap-y-1"><span>● Blue circles: demand areas</span><span>▣ Warehouse</span><span>◌ Dashed ring: service radius</span><span className="text-red-400">● Red: unserved</span></div>
-            </div>
-            {mapSelection && <div className="absolute bottom-3 right-3 z-10 max-w-xs rounded-md border border-blue-500/30 bg-[#111118]/95 px-3 py-2 shadow-lg">
-              <div className="text-xs font-semibold text-white">{mapSelection.label}</div>
-              <div className="mt-1 text-[11px] text-[#c0c0d0]">{mapSelection.detail}</div>
-            </div>}
-          </div>
-        </div>
-
-        {/* bottom info: assignments */}
-        {ran && result && (
-          <div className="p-2 border-t border-[#1e1e2e] bg-[#0d0d16] text-[10px] font-mono text-[#4a4a60] flex flex-wrap gap-x-4 gap-y-1">
-            {Object.entries(result.assignments).slice(0, 40).map(([nid, wid]) => {
-              const n = nb.find(x => x.id === nid); const w = wh.find(x => x.id === wid);
-              return n && w ? <span key={nid}><span className="text-[#3a3a50]">{n.name}</span>→<span className="text-blue-400">{w.name}</span></span> : null;
-            })}
-          </div>
-        )}
       </div>
 
-      {/* Right: results */}
-      <div className="w-72 border-l border-[#1e1e2e] overflow-y-auto bg-[#0d0d16] p-3 space-y-3">
-        <div className="text-[10px] font-mono text-[#3a3a50] uppercase tracking-widest">Results</div>
-
-        {!ran && !running && (
-          <div className="text-center py-10">
-            <Play size={24} className="mx-auto text-[#2a2a3a] mb-3" />
-            <div className="text-xs text-[#3a3a50]">Configure and run<br />optimization</div>
+      {/* Main Center & Right Area */}
+      <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
+        {/* Top View Switcher Tabs */}
+        <div className="h-12 border-b border-[#1e1e2e] bg-[#0d0d16] px-4 flex items-center justify-between flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setActiveTab('map')}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors ${
+                activeTab === 'map'
+                  ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30'
+                  : 'text-[#8080a0] hover:text-white hover:bg-[#1a1a24]'
+              }`}
+            >
+              <Layers size={13} /> Map & Network Visualizer
+            </button>
+            <button
+              onClick={() => setActiveTab('baseline')}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors ${
+                activeTab === 'baseline'
+                  ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30'
+                  : 'text-[#8080a0] hover:text-white hover:bg-[#1a1a24]'
+              }`}
+            >
+              <CheckCircle2 size={13} /> Baseline vs. Optimized
+            </button>
+            <button
+              onClick={() => setActiveTab('sweep')}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors ${
+                activeTab === 'sweep'
+                  ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30'
+                  : 'text-[#8080a0] hover:text-white hover:bg-[#1a1a24]'
+              }`}
+            >
+              <BarChart3 size={13} /> Infra vs Delivery Sweep (k=1..N)
+            </button>
+            <button
+              onClick={() => setActiveTab('median')}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors ${
+                activeTab === 'median'
+                  ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30'
+                  : 'text-[#8080a0] hover:text-white hover:bg-[#1a1a24]'
+              }`}
+            >
+              <Compass size={13} /> Weiszfeld Geometric Center
+            </button>
           </div>
-        )}
 
-        {running && (
-          <div className="text-center py-10">
-            <Loader2 className="animate-spin mx-auto mb-3 text-blue-400" size={20} />
-            <div className="text-xs text-blue-400 font-mono">Running {ALGORITHMS.find(a => a.key === algo)?.label}...</div>
+          <div className="flex items-center gap-2">
+            {ran && result && (
+              <Badge variant={result.optimal ? 'success' : 'info'}>
+                {result.optimal ? '✓ Global Optimum Proven' : result.algorithmUsed}
+              </Badge>
+            )}
           </div>
-        )}
+        </div>
 
-        {ran && result && (
-          <div className="space-y-3">
-            <div className="flex items-center gap-1.5 py-1.5 px-2.5 rounded bg-emerald-500/10 border border-emerald-500/20">
-              <CheckCircle2 size={13} className="text-emerald-400" />
-              <span className="text-xs text-emerald-400 font-medium">{result.optimal ? 'Optimal (proven)' : 'Heuristic'}</span>
-            </div>
-
-            <div className="space-y-1.5">
-              {[
-                { label: 'Total Cost', value: fmtCurrency(result.totalCost), highlight: true },
-                { label: 'Delivery Cost', value: fmtCurrency(result.deliveryCost) },
-                { label: 'Fixed Cost', value: fmtCurrency(result.fixedCost) },
-                { label: 'Avg Distance', value: `${result.avgDistance.toFixed(2)} km` },
-                { label: 'Warehouses', value: String(result.openWarehouses.length) },
-                { label: 'Violations', value: String(result.unserved?.length || 0), warn: !!(result.unserved?.length) },
-              ].map((row, i) => (
-                <div key={i} className={`flex items-center justify-between text-xs py-1.5 px-2 rounded ${
-                  row.highlight ? 'bg-[#111118] border border-[#2a2a3a]' : ''
-                }`}>
-                  <span className="text-[#5a5a70]">{row.label}</span>
-                  <span className={`font-mono font-medium ${row.highlight ? 'text-white' : row.warn ? 'text-amber-400' : 'text-[#c0c0d0]'}`}>{row.value}</span>
-                </div>
-              ))}
-              {result.savingsPct != null && (
-                <div className="flex items-center justify-between text-xs py-1.5 px-2 rounded bg-emerald-500/8 border border-emerald-500/20">
-                  <span className="text-emerald-400">Savings vs 1 wh</span>
-                  <span className="font-mono font-medium text-emerald-400">{result.savingsPct > 0 ? '+' : ''}{result.savingsPct.toFixed(1)}%</span>
-                </div>
-              )}
-            </div>
-
-            <div className="text-[10px] font-mono text-[#3a3a50] uppercase tracking-widest mt-2 mb-1">Warehouses</div>
-            {whList.map((w, i) => (
-              <div key={i} className="flex items-center gap-2 py-1.5 border-b border-[#1a1a24] last:border-0">
-                <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
-                  w.u > 0.9 ? 'bg-amber-400' : w.u > 0.75 ? 'bg-blue-400' : 'bg-emerald-400'
-                }`} />
-                <div className="flex-1 min-w-0">
-                  <div className="text-[10px] text-[#8080a0] truncate">{w.id} {w.name}</div>
-                  <div className="h-1 bg-[#1a1a24] rounded-full mt-0.5">
-                    <div className="h-full rounded-full bg-blue-500" style={{ width: `${w.u * 100}%` }} />
-                  </div>
-                </div>
-                <span className="text-[10px] font-mono text-[#5a5a70] flex-shrink-0">{fmtPct(w.u)}</span>
+        {/* Tab Contents */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {err && (
+            <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-xs flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <AlertTriangle size={15} />
+                <span>{err}</span>
               </div>
-            ))}
+              <Button variant="ghost" size="sm" onClick={() => setErr(null)}>Dismiss</Button>
+            </div>
+          )}
 
-            <Button variant="outline" size="sm" className="w-full">
-              <Info size={12} />Export
-            </Button>
-          </div>
-        )}
+          {/* TAB 1: Map Visualizer */}
+          {activeTab === 'map' && (
+            <div className="grid grid-cols-1 xl:grid-cols-4 gap-4 h-[calc(100vh-140px)] min-h-[550px]">
+              {/* SVG Map Canvas */}
+              <div className="xl:col-span-3 rounded-xl border border-[#1e1e2e] bg-[#0d0f1a] relative overflow-hidden flex flex-col">
+                <div className="absolute top-3 left-3 z-10 flex items-center gap-2">
+                  <div className="px-2.5 py-1 rounded-full text-[11px] font-mono bg-[#111118]/90 border border-[#1e1e2e] text-white flex items-center gap-1.5 backdrop-blur shadow-md">
+                    <span>{scaledNb.length} Demand Nodes</span>
+                    <span className="text-[#4a4a60]">·</span>
+                    <span className="text-emerald-400">{wh.filter(w => result?.openWarehouses?.includes(w.id)).length || '—'} Open Hubs</span>
+                  </div>
+                  {result?.unserved && result.unserved.length > 0 && (
+                    <div className="px-2.5 py-1 rounded-full text-[11px] font-mono bg-red-500/15 border border-red-500/30 text-red-400 flex items-center gap-1 backdrop-blur shadow-md">
+                      <ShieldAlert size={12} /> {result.unserved.length} Unserved (Exceeds Radius/Capacity)
+                    </div>
+                  )}
+                </div>
+
+                <div className="absolute top-3 right-3 z-10 flex items-center gap-1 bg-[#111118]/90 p-1 rounded-lg border border-[#1e1e2e] backdrop-blur">
+                  <button onClick={() => setMapZoom(z => Math.min(2.5, +(z + 0.2).toFixed(1)))} className="w-7 h-7 rounded hover:bg-[#1e1e2e] text-white flex items-center justify-center font-bold text-sm">+</button>
+                  <button onClick={() => setMapZoom(z => Math.max(0.8, +(z - 0.2).toFixed(1)))} className="w-7 h-7 rounded hover:bg-[#1e1e2e] text-white flex items-center justify-center font-bold text-sm">−</button>
+                  <button onClick={() => { setMapZoom(1); setMapSelection(null); }} className="px-2 h-7 rounded hover:bg-[#1e1e2e] text-[10px] text-[#a0a0b0] font-mono">1x</button>
+                </div>
+
+                <div className="flex-1 w-full h-full relative">
+                  <WloMapSVG
+                    neighborhoods={scaledNb}
+                    warehouses={wh}
+                    result={result}
+                    zoom={mapZoom}
+                    onSelect={setMapSelection}
+                  />
+                </div>
+
+                {/* Map Legend Bar */}
+                <div className="p-2.5 border-t border-[#1e1e2e] bg-[#0d0d16]/95 backdrop-blur flex items-center justify-between text-[11px] text-[#8080a0] flex-wrap gap-2">
+                  <div className="flex items-center gap-4">
+                    <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-blue-500/30 border border-blue-400 inline-block" /> Demand Area (Circle Area = Daily Orders)</span>
+                    <span className="flex items-center gap-1.5"><span className="w-3.5 h-3.5 rounded bg-emerald-500 border border-white inline-block" /> Selected Open Hub</span>
+                    <span className="flex items-center gap-1.5"><span className="w-3.5 h-3.5 rounded bg-[#1e1e2e] border border-[#3a3a50] inline-block" /> Inactive Candidate</span>
+                    <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-red-500 inline-block" /> Unserved Radius/Cap Violation</span>
+                  </div>
+                  {mapSelection && (
+                    <div className="text-white font-mono text-[10px] bg-blue-500/10 border border-blue-500/30 px-2 py-0.5 rounded">
+                      Selected: <strong>{mapSelection.label}</strong> ({mapSelection.detail})
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Right KPI Summary Sidebar */}
+              <div className="xl:col-span-1 space-y-4 flex flex-col justify-between">
+                <Card>
+                  <CardHeader><span className="text-xs font-semibold text-white uppercase tracking-wider font-mono">Plan Performance</span></CardHeader>
+                  <CardBody className="space-y-3">
+                    {result ? (
+                      <>
+                        <div className="p-3 rounded-lg bg-[#161622] border border-[#222234]">
+                          <div className="text-[10px] font-mono text-[#6b6b80]">TOTAL LOGISTICS COST</div>
+                          <div className="text-2xl font-bold font-mono text-white mt-0.5">{fmtCurrency(result.totalCost)}</div>
+                          {result.savingsPct != null && (
+                            <div className="mt-1 text-[11px] text-emerald-400 font-medium flex items-center gap-1">
+                              <Sparkles size={12} /> Saves {result.savingsPct}% vs single hub baseline
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 text-xs">
+                          <div className="p-2 rounded bg-[#111118] border border-[#1e1e2e]">
+                            <div className="text-[10px] text-[#6b6b80]">Variable Delivery</div>
+                            <div className="font-mono text-white font-medium">{fmtCurrency(result.deliveryCost)}</div>
+                          </div>
+                          <div className="p-2 rounded bg-[#111118] border border-[#1e1e2e]">
+                            <div className="text-[10px] text-[#6b6b80]">Fixed Infrastructure</div>
+                            <div className="font-mono text-white font-medium">{fmtCurrency(result.fixedCost)}</div>
+                          </div>
+                          <div className="p-2 rounded bg-[#111118] border border-[#1e1e2e]">
+                            <div className="text-[10px] text-[#6b6b80]">Avg Transit Dist</div>
+                            <div className="font-mono text-blue-400 font-medium">{result.avgDistance.toFixed(2)} km</div>
+                          </div>
+                          <div className="p-2 rounded bg-[#111118] border border-[#1e1e2e]">
+                            <div className="text-[10px] text-[#6b6b80]">Solver Runtime</div>
+                            <div className="font-mono text-purple-400 font-medium">{result.runtimeMs} ms</div>
+                          </div>
+                        </div>
+
+                        {/* Hub Utilization List */}
+                        <div className="pt-2 border-t border-[#1e1e2e]">
+                          <div className="text-[10px] font-mono text-[#6b6b80] uppercase tracking-wider mb-2">Hub Utilization</div>
+                          <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                            {whList.map(w => (
+                              <div key={w.id} className="p-2 rounded bg-[#111118] border border-[#1e1e2e] text-xs">
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="font-medium text-white truncate">{w.name}</span>
+                                  <span className="font-mono text-emerald-400">{fmtPct(w.u)}</span>
+                                </div>
+                                <div className="w-full h-1.5 bg-[#1e1e2e] rounded-full overflow-hidden">
+                                  <div
+                                    className={`h-full rounded-full ${w.u > 0.9 ? 'bg-red-500' : w.u > 0.75 ? 'bg-amber-500' : 'bg-emerald-500'}`}
+                                    style={{ width: `${Math.min(100, w.u * 100)}%` }}
+                                  />
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="text-center py-12 text-[#6b6b80]">
+                        <Play size={28} className="mx-auto text-[#2a2a3a] mb-2" />
+                        <p className="text-xs">Configure parameters on the left and click <strong>Run Optimization</strong></p>
+                      </div>
+                    )}
+                  </CardBody>
+                </Card>
+
+                {/* Explanation Card */}
+                {result?.explanation && (
+                  <Card>
+                    <CardHeader><span className="text-xs font-semibold text-white uppercase tracking-wider font-mono">Mathematical Rationale</span></CardHeader>
+                    <CardBody>
+                      <ul className="text-[11px] text-[#8080a0] space-y-1.5 leading-relaxed">
+                        {result.explanation.slice(0, 4).map((line, idx) => (
+                          <li key={idx} className="flex items-start gap-1.5">
+                            <span className="text-blue-400 font-bold">•</span>
+                            <span>{line}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </CardBody>
+                  </Card>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 2: Baseline vs Optimized Comparison */}
+          {activeTab === 'baseline' && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Card>
+                  <CardBody className="pt-4">
+                    <div className="text-[10px] font-mono text-[#8080a0]">SINGLE CENTRAL HUB BASELINE</div>
+                    <div className="text-xl font-bold font-mono text-white mt-1">
+                      {result?.baselineSingle ? fmtCurrency(result.baselineSingle.total || result.baselineSingle.cost || 0) : '—'}
+                    </div>
+                    <p className="text-[11px] text-[#6b6b80] mt-1">1 Central warehouse serving all demand</p>
+                  </CardBody>
+                </Card>
+                <Card>
+                  <CardBody className="pt-4">
+                    <div className="text-[10px] font-mono text-blue-400">OPTIMIZED MULTI-HUB NETWORK</div>
+                    <div className="text-xl font-bold font-mono text-emerald-400 mt-1">
+                      {result ? fmtCurrency(result.totalCost) : '—'}
+                    </div>
+                    <p className="text-[11px] text-[#6b6b80] mt-1">{result?.openWarehouses.length || 0} Decentralized strategic hubs</p>
+                  </CardBody>
+                </Card>
+                <Card>
+                  <CardBody className="pt-4">
+                    <div className="text-[10px] font-mono text-emerald-400">NET EFFICIENCY GAIN</div>
+                    <div className="text-xl font-bold font-mono text-emerald-400 mt-1">
+                      {result?.savingsPct != null ? `+${result.savingsPct}% Savings` : '—'}
+                    </div>
+                    <p className="text-[11px] text-[#6b6b80] mt-1">Reduced transit time & fuel consumption</p>
+                  </CardBody>
+                </Card>
+              </div>
+
+              {/* Assignment Table */}
+              <Card>
+                <CardHeader>
+                  <span className="text-xs font-semibold text-white uppercase tracking-wider font-mono">
+                    Neighborhood Assignment Ledger ({scaledNb.length} Areas)
+                  </span>
+                </CardHeader>
+                <CardBody>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-[12px] text-left">
+                      <thead>
+                        <tr className="border-b border-[#1e1e2e] text-[#6b6b80] font-mono text-[10px] uppercase">
+                          <th className="py-2 px-3">Neighborhood</th>
+                          <th className="py-2 px-3">Daily Orders</th>
+                          <th className="py-2 px-3">Assigned Warehouse</th>
+                          <th className="py-2 px-3">Transit Distance</th>
+                          <th className="py-2 px-3">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {scaledNb.map(n => {
+                          const wid = result?.assignments?.[n.id];
+                          const w = wh.find(x => x.id === wid);
+                          const isUnserved = result?.unserved?.includes(n.id);
+                          return (
+                            <tr key={n.id} className="border-b border-[#1a1a24] hover:bg-[#14141e]">
+                              <td className="py-2 px-3 font-medium text-white">{n.name || n.id}</td>
+                              <td className="py-2 px-3 font-mono text-[#a0a0b0]">{n.demand} orders</td>
+                              <td className="py-2 px-3 font-mono text-blue-400">{w ? `${w.name} (${w.id})` : isUnserved ? '—' : 'Auto-routed'}</td>
+                              <td className="py-2 px-3 font-mono text-[#a0a0b0]">
+                                {w ? `${Math.hypot(n.x - w.x, n.y - w.y).toFixed(2)} km` : '—'}
+                              </td>
+                              <td className="py-2 px-3">
+                                {isUnserved ? (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-red-500/10 text-red-400 border border-red-500/20">UNSERVED</span>
+                                ) : (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">COVERED</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardBody>
+              </Card>
+            </div>
+          )}
+
+          {/* TAB 3: Infrastructure vs Delivery Cost Trade-Off Sweep (Bonus 8) */}
+          {activeTab === 'sweep' && (
+            <div className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-xs font-semibold text-white uppercase tracking-wider font-mono">
+                        Network Cost Curve: Infrastructure Setup vs. Delivery Mileage (k = 1..N)
+                      </span>
+                      <p className="text-[11px] text-[#6b6b80] mt-0.5">
+                        Trade-off: TotalCost(k) = DeliveryCost(k) + k × FixedSetupCost. The minimum of this curve indicates the optimal fleet size.
+                      </p>
+                    </div>
+                    <Button variant="primary" size="sm" loading={sweepLoading} onClick={runSweep}>
+                      Re-run Sweep
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardBody>
+                  {sweepData.length > 0 ? (
+                    <div className="h-80 w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={sweepData} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#1e1e2e" />
+                          <XAxis dataKey="k" label={{ value: 'Number of Open Warehouses (k)', position: 'insideBottom', offset: -10, fill: '#8080a0', fontSize: 11 }} tick={{ fill: '#8080a0', fontSize: 11 }} />
+                          <YAxis tick={{ fill: '#8080a0', fontSize: 11 }} tickFormatter={v => `$${v}`} />
+                          <Tooltip
+                            contentStyle={{ background: '#111118', border: '1px solid #2a2a3a', borderRadius: 8, fontSize: 11 }}
+                            formatter={(v: any) => fmtCurrency(Number(v))}
+                          />
+                          <Legend wrapperStyle={{ fontSize: 11, paddingTop: 10 }} />
+                          <Line type="monotone" dataKey="deliveryCost" name="Delivery Cost (Variable)" stroke="#3b82f6" strokeWidth={2} dot={{ r: 4 }} />
+                          <Line type="monotone" dataKey="infraCost" name="Fixed Hub Setup Cost" stroke="#f59e0b" strokeWidth={2} dot={{ r: 4 }} />
+                          <Line type="monotone" dataKey="totalCost" name="Grand Total Cost" stroke="#22c55e" strokeWidth={3} dot={{ r: 5 }} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  ) : (
+                    <div className="text-center py-16">
+                      <BarChart3 size={32} className="mx-auto text-[#2a2a3a] mb-3" />
+                      <p className="text-xs text-[#8080a0]">Click <strong>k-Sweep Curve</strong> to compute costs across k = 1..{wh.length} candidate hubs.</p>
+                      <Button variant="primary" size="sm" onClick={runSweep} className="mt-3">Compute Cost Curve</Button>
+                    </div>
+                  )}
+                </CardBody>
+              </Card>
+            </div>
+          )}
+
+          {/* TAB 4: Weiszfeld Geometric Median Center */}
+          {activeTab === 'median' && (
+            <div className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <span className="text-xs font-semibold text-white uppercase tracking-wider font-mono">
+                    Weiszfeld Demand-Weighted Continuous Geometric Median (k = 1)
+                  </span>
+                </CardHeader>
+                <CardBody className="space-y-4">
+                  <p className="text-xs text-[#a0a0b0] leading-relaxed">
+                    The <strong>Weiszfeld Algorithm</strong> solves the continuous Fermat-Weber location problem:
+                    <br />
+                    <code className="text-blue-400 font-mono text-[11px] block my-2 p-2 bg-[#111118] rounded border border-[#1e1e2e]">
+                      min_(x,y) ∑ D_i · √((x - x_i)² + (y - y_i)²)
+                    </code>
+                    Unlike a simple center of mass (centroid/mean) which minimizes <em>squared</em> Euclidean distances and over-weights remote outliers, the geometric median minimizes the direct sum of weighted distances—representing true transportation cost.
+                  </p>
+
+                  {medianResult ? (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="p-4 rounded-xl bg-[#141420] border border-[#222234]">
+                        <div className="text-[10px] font-mono text-[#8080a0]">OPTIMAL CONTINUOUS COORDINATE</div>
+                        <div className="text-xl font-bold font-mono text-white mt-1">
+                          ({medianResult.x.toFixed(4)}, {medianResult.y.toFixed(4)})
+                        </div>
+                        <p className="text-[11px] text-[#6b6b80] mt-1">Exact global Fermat-Weber median</p>
+                      </div>
+                      <div className="p-4 rounded-xl bg-[#141420] border border-[#222234]">
+                        <div className="text-[10px] font-mono text-[#8080a0]">CLOSEST CANDIDATE DOCK</div>
+                        <div className="text-xl font-bold font-mono text-blue-400 mt-1">
+                          {medianResult.nearestWarehouse}
+                        </div>
+                        <p className="text-[11px] text-[#6b6b80] mt-1">Optimal discrete hub recommendation</p>
+                      </div>
+                      <div className="p-4 rounded-xl bg-[#141420] border border-[#222234]">
+                        <div className="text-[10px] font-mono text-[#8080a0]">PROXIMITY OFFSET</div>
+                        <div className="text-xl font-bold font-mono text-emerald-400 mt-1">
+                          {medianResult.distanceToNearest.toFixed(2)} km
+                        </div>
+                        <p className="text-[11px] text-[#6b6b80] mt-1">Distance between ideal point and real site</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <Button variant="primary" size="sm" onClick={runWeiszfeld}>Compute Weiszfeld Median Point</Button>
+                  )}
+                </CardBody>
+              </Card>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
-// ---------- SVG map (lightweight, deterministic, no external tile deps) ----------
-function WloMapSVG({ neighborhoods, warehouses, result, zoom, onSelect }: {
+// ----------------- SVG MAP CANVAS HELPER -----------------
+function WloMapSVG({
+  neighborhoods,
+  warehouses,
+  result,
+  zoom,
+  onSelect,
+}: {
   neighborhoods: (Point & { demand: number })[];
   warehouses: Candidate[];
   result?: OptResult | null;
@@ -301,80 +890,172 @@ function WloMapSVG({ neighborhoods, warehouses, result, zoom, onSelect }: {
 }) {
   const xs = [...neighborhoods.map(n => n.x), ...warehouses.map(w => w.x)];
   const ys = [...neighborhoods.map(n => n.y), ...warehouses.map(w => w.y)];
-  const minX = xs.length ? Math.min(...xs) - 0.01 : 12.9;
-  const maxX = xs.length ? Math.max(...xs) + 0.01 : 13.0;
-  const minY = ys.length ? Math.min(...ys) - 0.01 : 77.5;
-  const maxY = ys.length ? Math.max(...ys) + 0.01 : 77.6;
+
+  const minX = xs.length ? Math.min(...xs) - 0.005 : 12.9;
+  const maxX = xs.length ? Math.max(...xs) + 0.005 : 13.0;
+  const minY = ys.length ? Math.min(...ys) - 0.005 : 77.5;
+  const maxY = ys.length ? Math.max(...ys) + 0.005 : 77.6;
+
   const dx = Math.max(0.001, maxX - minX);
   const dy = Math.max(0.001, maxY - minY);
-  const W = 640, H = 420;
-  const toX = (x: number) => ((x - minX) / dx) * W;
-  const toY = (y: number) => ((y - minY) / dy) * H;
+
+  const W = 800;
+  const H = 550;
+
+  const toX = (x: number) => ((x - minX) / dx) * (W - 80) + 40;
+  const toY = (y: number) => ((y - minY) / dy) * (H - 80) + 40;
+
   const safeZoom = Math.max(0.5, zoom || 1);
   const openIds = new Set(result?.openWarehouses || []);
   const assigned = result?.assignments || {};
   const maxDemand = Math.max(...neighborhoods.map(n => n.demand), 1);
 
   return (
-    <svg viewBox={`${(W - W / safeZoom) / 2} ${(H - H / safeZoom) / 2} ${W / safeZoom} ${H / safeZoom}`} className="w-full h-full" xmlns="http://www.w3.org/2000/svg">
-      {Array.from({ length: 13 }, (_, i) => (
-        <line key={`h${i}`} x1="0" y1={i * 35} x2={W} y2={i * 35} stroke="#1a1a2e" strokeWidth="1" />
+    <svg
+      viewBox={`${(W - W / safeZoom) / 2} ${(H - H / safeZoom) / 2} ${W / safeZoom} ${H / safeZoom}`}
+      className="w-full h-full select-none"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      {/* Background Grid */}
+      {Array.from({ length: 16 }, (_, i) => (
+        <line key={`h${i}`} x1="0" y1={i * 40} x2={W} y2={i * 40} stroke="#141426" strokeWidth="1" />
       ))}
-      {Array.from({ length: 19 }, (_, i) => (
-        <line key={`v${i}`} x1={i * 35} y1="0" x2={i * 35} y2={H} stroke="#1a1a2e" strokeWidth="1" />
+      {Array.from({ length: 22 }, (_, i) => (
+        <line key={`v${i}`} x1={i * 40} y1="0" x2={i * 40} y2={H} stroke="#141426" strokeWidth="1" />
       ))}
 
-      {/* assignment lines */}
+      {/* Assignment Lines */}
       {Object.entries(assigned).map(([nid, wid]) => {
         const n = neighborhoods.find(x => x.id === nid);
         const w = warehouses.find(x => x.id === wid);
         if (!n || !w || !openIds.has(wid)) return null;
         return (
-          <line key={nid} x1={toX(n.x)} y1={toY(n.y)} x2={toX(w.x)} y2={toY(w.y)}
-            stroke="#3b82f6" strokeWidth="0.5" strokeOpacity="0.15" />
+          <line
+            key={nid}
+            x1={toX(n.x)}
+            y1={toY(n.y)}
+            x2={toX(w.x)}
+            y2={toY(w.y)}
+            stroke="#3b82f6"
+            strokeWidth="1.2"
+            strokeOpacity="0.25"
+            strokeDasharray="3 3"
+          />
         );
       })}
 
-      {/* service radius */}
+      {/* Service Radius Rings */}
       {warehouses.filter(w => openIds.has(w.id)).map(w => (
-        <circle key={w.id} cx={toX(w.x)} cy={toY(w.y)} r={60}
-          fill="none" stroke="#3b82f6" strokeWidth="1" strokeDasharray="4 4" strokeOpacity="0.2" />
+        <circle
+          key={w.id}
+          cx={toX(w.x)}
+          cy={toY(w.y)}
+          r={75}
+          fill="#3b82f6"
+          fillOpacity="0.03"
+          stroke="#3b82f6"
+          strokeWidth="1"
+          strokeDasharray="4 4"
+          strokeOpacity="0.3"
+        />
       ))}
 
-      {/* neighborhoods */}
+      {/* Neighborhood Nodes */}
       {neighborhoods.map(n => {
-        const r = 3 + (n.demand / maxDemand) * 7;
+        const r = 4 + (n.demand / maxDemand) * 8;
         const isUnserved = result?.unserved?.includes(n.id);
+        const wid = assigned[n.id];
+        const w = warehouses.find(x => x.id === wid);
+
         return (
-          <g key={n.id} className="cursor-pointer" onClick={() => onSelect({ kind: 'demand', id: n.id, label: n.id, detail: `Demand ${n.demand} units${isUnserved ? ' · currently unserved' : ' · assigned to the lowest-cost feasible warehouse'}` })}>
-            <title>{`${n.id}: demand ${n.demand}${isUnserved ? ' (unserved)' : ''}`}</title>
-            <circle cx={toX(n.x)} cy={toY(n.y)} r={r + 4} fill="#3b82f6" fillOpacity="0.05" />
-            <circle cx={toX(n.x)} cy={toY(n.y)} r={r}
+          <g
+            key={n.id}
+            className="cursor-pointer group"
+            onClick={() => onSelect({
+              kind: 'demand',
+              id: n.id,
+              label: n.name || n.id,
+              detail: `Daily demand: ${n.demand} orders · Assigned to: ${w ? w.name || w.id : isUnserved ? 'None (Unserved)' : 'Auto-routed'}`,
+            })}
+          >
+            <title>{`${n.name || n.id}: ${n.demand} orders`}</title>
+            <circle cx={toX(n.x)} cy={toY(n.y)} r={r + 4} fill={isUnserved ? '#ef4444' : '#3b82f6'} fillOpacity="0.1" />
+            <circle
+              cx={toX(n.x)}
+              cy={toY(n.y)}
+              r={r}
               fill={isUnserved ? '#ef4444' : '#1e3a5f'}
-              stroke={isUnserved ? '#ef4444' : '#3b82f6'}
-              strokeWidth={isUnserved ? 1.5 : 1}
+              stroke={isUnserved ? '#fca5a5' : '#60a5fa'}
+              strokeWidth={isUnserved ? 2 : 1}
             />
+            <text
+              x={toX(n.x)}
+              y={toY(n.y) + r + 10}
+              textAnchor="middle"
+              fontSize="9"
+              fill="#8080a0"
+              fontFamily="system-ui, sans-serif"
+            >
+              {n.name || n.id}
+            </text>
           </g>
         );
       })}
 
-      {/* warehouses */}
+      {/* Warehouse Candidate / Open Hub Nodes */}
       {warehouses.map(w => {
         const isOpen = openIds.has(w.id);
         const u = result?.utilization?.find(x => x.id === w.id);
+
         return (
-          <g key={w.id} className="cursor-pointer" onClick={() => onSelect({ kind: 'warehouse', id: w.id, label: w.name || w.id, detail: (isOpen ? 'Open' : 'Candidate') + ' warehouse · capacity ' + w.capacity + (u ? ' · ' + Math.round(u.u * 100) + '% utilized' : '') })}>
-            <title>{`${w.name || w.id}: ${isOpen ? 'open' : 'candidate'}, capacity ${w.capacity}`}</title>
-            <circle cx={toX(w.x)} cy={toY(w.y)} r={isOpen ? 14 : 10}
-              fill={isOpen ? '#3b82f6' : '#1e1e2e'}
-              fillOpacity={isOpen ? 0.15 : 0.5}
-              stroke={isOpen ? '#60a5fa' : '#3a3a50'}
-              strokeWidth={isOpen ? 2 : 1} />
-            <rect x={toX(w.x) - 6} y={toY(w.y) - 4} width={12} height={8} rx={1}
-              fill={isOpen ? '#3b82f6' : '#3a3a50'} />
+          <g
+            key={w.id}
+            className="cursor-pointer"
+            onClick={() => onSelect({
+              kind: 'warehouse',
+              id: w.id,
+              label: w.name || w.id,
+              detail: `${isOpen ? 'Open Hub' : 'Candidate Site'} · Capacity: ${w.capacity} · Fixed setup: $${w.fixedCost}${u ? ` · ${Math.round(u.u * 100)}% utilized` : ''}`,
+            })}
+          >
+            <title>{`${w.name || w.id}: ${isOpen ? 'OPEN' : 'Candidate'}, Cap: ${w.capacity}`}</title>
+            <circle
+              cx={toX(w.x)}
+              cy={toY(w.y)}
+              r={isOpen ? 16 : 12}
+              fill={isOpen ? '#22c55e' : '#1e1e2e'}
+              fillOpacity={isOpen ? 0.2 : 0.6}
+              stroke={isOpen ? '#4ade80' : '#4a4a60'}
+              strokeWidth={isOpen ? 2 : 1}
+            />
+            <rect
+              x={toX(w.x) - 7}
+              y={toY(w.y) - 5}
+              width={14}
+              height={10}
+              rx={2}
+              fill={isOpen ? '#22c55e' : '#3a3a50'}
+            />
+            <text
+              x={toX(w.x)}
+              y={toY(w.y) - 14}
+              textAnchor="middle"
+              fontSize="10"
+              fontWeight="bold"
+              fill={isOpen ? '#4ade80' : '#8080a0'}
+              fontFamily="monospace"
+            >
+              {w.name || w.id}
+            </text>
             {isOpen && u && (
-              <text x={toX(w.x)} y={toY(w.y) - 10} textAnchor="middle"
-                fontSize="8" fill="#60a5fa" fontFamily="monospace">
+              <text
+                x={toX(w.x)}
+                y={toY(w.y) + 18}
+                textAnchor="middle"
+                fontSize="9"
+                fill="#4ade80"
+                fontFamily="monospace"
+              >
                 {Math.round(u.u * 100)}%
               </text>
             )}
