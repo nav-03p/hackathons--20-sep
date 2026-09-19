@@ -11,6 +11,7 @@ import {
 import {
   api, type FulfillDemo, type FulfillPlan, type FulfillOrderRow, type FulfillParamsIn, type Assignment,
 } from '@/lib/api';
+import { CustomerMap, DockTable } from './CustomerMap';
 
 type Tab = 'orders' | 'inventory' | 'routes' | 'storage' | 'rebalance';
 
@@ -287,7 +288,11 @@ export function Fulfillment() {
           <CardHeader>
             <div className="flex items-center justify-between flex-wrap gap-2">
               <span className="text-sm font-medium text-white flex items-center gap-1.5">
-                <Route size={12} className="text-blue-400" />Network view — who ships to whom
+                <Route size={12} className="text-blue-400" />
+                {selectedOrder
+                  ? <>Customer map — <span className="font-mono text-blue-300">{selectedOrder.customerName}</span>
+                    <span className="text-[#4a4a60] font-mono text-[11px]">({selectedOrder.orderId})</span></>
+                  : 'Network view — who ships to whom'}
               </span>
               <div className="flex items-center gap-3 text-[10px] font-mono text-[#4a4a60]">
                 <span className="flex items-center gap-1">
@@ -302,6 +307,13 @@ export function Fulfillment() {
             </div>
           </CardHeader>
           <CardBody>
+            {selectedOrder ? (
+              <>
+                <CustomerMap plan={plan} demo={demo} order={selectedOrder}
+                  assignments={selectedAssignments} areaOf={areaOf} onClear={() => setSelected(null)} />
+                <DockTable plan={plan} demo={demo} order={selectedOrder} assignments={selectedAssignments} />
+              </>
+            ) : (
             <svg viewBox="0 0 100 100" className="w-full h-[300px]">
               {[20, 40, 60, 80].map(v => (
                 <g key={'g' + v}>
@@ -336,9 +348,12 @@ export function Fulfillment() {
                   <rect x={w.x - 2.4} y={100 - w.y - 2.4} width={4.8} height={4.8} rx={0.8} fill="#22c55e" />
                   <text x={w.x + 3.4} y={100 - w.y + 1.1} fontSize={2.5} fill="#8080a0"
                     fontFamily="monospace">{(w.name || w.id).split(' ')[0]}</text>
+                  <text x={w.x + 3.4} y={100 - w.y + 4.1} fontSize={2.1} fill="#4a4a60"
+                    fontFamily="monospace">cap {fmt((w.throughputPerHr ?? w.capacity ?? 0) >= 1e9 ? (w.capacity ?? 0) : (w.throughputPerHr ?? w.capacity ?? 0))}</text>
                 </g>
               ))}
             </svg>
+            )}
           </CardBody>
         </Card>
       )}
