@@ -190,7 +190,7 @@ export function OptimizationWorkspace() {
               ) : <div className="px-2.5 py-1 rounded-full text-[10px] font-mono bg-[#111118] border border-[#1e1e2e] text-[#4a4a60]">Config & run</div>}
             </div>
             {result?.unserved && result.unserved.length > 0 && (
-              <div className="absolute top-3 right-3 z-10 px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 text-[10px] font-mono flex items-center gap-1">
+              <div className="absolute top-14 right-3 z-10 px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 text-[10px] font-mono flex items-center gap-1">
                 <AlertTriangle size={10} />{result.unserved.length} unserved
               </div>
             )}
