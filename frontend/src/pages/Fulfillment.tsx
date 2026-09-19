@@ -81,6 +81,8 @@ export function Fulfillment() {
   const [err, setErr] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>('orders');
   const [selected, setSelected] = useState<string | null>(null);
+  const [areaFilter, setAreaFilter] = useState<string>('all');
+  const [search, setSearch] = useState('');
   const [commit, setCommit] = useState(false);
   const [includeStorage, setIncludeStorage] = useState(true);
   const [includeRebalance, setIncludeRebalance] = useState(true);
@@ -90,13 +92,19 @@ export function Fulfillment() {
     kmPerHour: 28, serviceMinPerStop: 5, latePenaltyPerHr: 12, maxLateHr: 36,
   });
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (onlyArea?: string) => {
     setRunning(true); setErr(null);
     try {
       const d = await api.fulfillDemo({ seed: 7, orders: ordersCount });
       setDemo(d);
+      // "Do it for me": when an area is picked, auto-plan just that area's
+      // orders so every recommendation is scoped to what you filtered.
+      const scopedOrders = onlyArea && onlyArea !== 'all'
+        ? d.orders.filter(o => ((o.customerName || '').split(' #')[0] || 'Other') === onlyArea)
+        : d.orders;
       const p = await api.fulfill({
-        warehouses: d.warehouses, orders: d.orders, products: d.products, demand: d.demand,
+        warehouses: d.warehouses, orders: scopedOrders.length ? scopedOrders : d.orders,
+        products: d.products, demand: d.demand,
         params, options: { commit, includeRoutes: true, includeStorage, includeRebalance },
       });
       setPlan(p);
@@ -126,6 +134,34 @@ export function Fulfillment() {
     plan && selected ? (plan.orders.find(o => o.orderId === selected) ?? null) : null;
   const selectedAssignments: Assignment[] = plan && selected
     ? plan.assignments.filter(a => a.orderId === selected) : [];
+
+  /** Area = city prefix of customerName ("Whitefield #3" -> "Whitefield"). */
+  const areaOf = (name: string) => (name || '').split(' #')[0].split(' - ')[0].trim() || 'Other';
+  const areas = useMemo(() => {
+    if (!plan) return [];
+    const s = new Set(plan.orders.map(o => areaOf(o.customerName)));
+    return [...s].sort();
+  }, [plan]);
+
+  const filteredOrders = useMemo(() => {
+    if (!plan) return [];
+    const q = search.trim().toLowerCase();
+    return plan.orders.filter(o => {
+      if (areaFilter !== 'all' && areaOf(o.customerName) !== areaFilter) return false;
+      if (q && !(o.orderId.toLowerCase().includes(q) || o.customerName.toLowerCase().includes(q) ||
+        o.customerId.toLowerCase().includes(q))) return false;
+      return true;
+    });
+  }, [plan, areaFilter, search]);
+
+  // Keep selection valid when filter changes: jump to first visible order.
+  useEffect(() => {
+    if (!plan) return;
+    if (!filteredOrders.some(o => o.orderId === selected)) {
+      setSelected(filteredOrders[0]?.orderId ?? null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [areaFilter, search, plan]);
 
   const kpis = useMemo(() => {
     if (!plan) return null;
@@ -175,7 +211,7 @@ export function Fulfillment() {
             onChange={e => setOrdersCount(Number(e.target.value))}>
             {[10, 14, 18, 24, 32].map(n => <option key={n} value={n}>{n} orders</option>)}
           </select>
-          <Button variant="primary" size="sm" loading={running} onClick={refresh}>
+          <Button variant="primary" size="sm" loading={running} onClick={() => refresh()}>
             <Play size={13} />Run plan
           </Button>
         </div>
@@ -276,15 +312,20 @@ export function Fulfillment() {
               {plan.assignments.map((a, i) => {
                 const w = demo.warehouses.find(x => x.id === a.warehouseId);
                 if (!w) return null;
+                const isSel = a.orderId === selected;
                 const bad = a.atRisk || a.lateHr > 0 || a.split;
                 return (
                   <line key={'f' + i} x1={w.x} y1={100 - w.y} x2={a.x} y2={100 - a.y}
-                    stroke={bad ? '#ef4444' : '#3b82f6'} strokeWidth={bad ? 0.5 : 0.35}
-                    opacity={0.5} strokeLinecap="round" />
+                    stroke={bad ? '#ef4444' : '#3b82f6'}
+                    strokeWidth={isSel ? 0.9 : bad ? 0.5 : 0.35}
+                    opacity={selected == null ? 0.5 : isSel ? 1 : 0.12}
+                    strokeLinecap="round" />
                 );
               })}
-              {plan.orders.map(o => (
-                <circle key={'o' + o.orderId} cx={o.x} cy={100 - o.y} r={0.9}
+              {(selected ? plan.orders.filter(o => o.orderId === selected)
+                : filteredOrders.length ? filteredOrders : plan.orders).map(o => (
+                <circle key={'o' + o.orderId} cx={o.x} cy={100 - o.y}
+                  r={selected === o.orderId ? 1.6 : 0.9}
                   onClick={() => { setSelected(o.orderId); setTab('orders'); }}
                   className="cursor-pointer"
                   stroke={selected === o.orderId ? '#ffffff' : 'transparent'} strokeWidth={selected === o.orderId ? 0.7 : 0}
@@ -324,10 +365,32 @@ export function Fulfillment() {
           <Card className="xl:col-span-3">
             <CardHeader>
               <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-white flex items-center gap-1.5">
-                  <Package size={12} className="text-blue-400" />Allocation per order
-                </span>
-                <Badge variant="muted">{plan.orders.length} orders · {plan.totals.linesRequested} lines</Badge>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-white flex items-center gap-1.5">
+                    <Package size={12} className="text-blue-400" />Allocation per order
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap mt-2">
+                  <select value={areaFilter} onChange={e => setAreaFilter(e.target.value)}
+                    className={selectCls} title="Filter customers by area">
+                    <option value="all">All areas ({plan.orders.length})</option>
+                    {areas.map(a => {
+                      const n = plan.orders.filter(o => areaOf(o.customerName) === a).length;
+                      return <option key={a} value={a}>{a} ({n})</option>;
+                    })}
+                  </select>
+                  <input value={search} onChange={e => setSearch(e.target.value)}
+                    placeholder="Search order / customer…" className={selectCls + ' w-44 placeholder:text-[#3a3a50]'} />
+                  <Button size="sm" variant="primary" onClick={() => refresh(areaFilter)}
+                    disabled={running} title="Re-run the optimizer scoped to the selected area — it picks the optimal dock automatically">
+                    <Zap size={12} />Optimize {areaFilter === 'all' ? 'all' : areaFilter} for me
+                  </Button>
+                  {(areaFilter !== 'all' || search) && (
+                    <button onClick={() => { setAreaFilter('all'); setSearch(''); }}
+                      className="text-[11px] text-[#8080a0] hover:text-white font-mono">clear ✕</button>
+                  )}
+                  <Badge variant="muted">{filteredOrders.length} of {plan.orders.length} orders</Badge>
+                </div>
               </div>
             </CardHeader>
             <CardBody className="p-0 overflow-x-auto">
@@ -347,7 +410,7 @@ export function Fulfillment() {
                   </tr>
                 </thead>
                 <tbody>
-                  {plan.orders.map(o => (
+                  {filteredOrders.map(o => (
                     <tr key={o.orderId} onClick={() => setSelected(o.orderId)}
                       className={cn('border-b border-[#1e1e2e]/60 cursor-pointer transition-colors',
                         selected === o.orderId ? 'bg-blue-500/5' : 'hover:bg-[#15151f]')}>
@@ -392,27 +455,16 @@ export function Fulfillment() {
                 </CardHeader>
                 <CardBody className="space-y-3">
                   <div className="text-[10px] font-mono uppercase tracking-widest text-blue-300">Customer delivery recommendation</div>
-                  {selectedAssignments.slice(0, 1).map(a => {
+                  {selectedAssignments.map(a => {
                     const steps = [
-                      { icon: Boxes, label: 'Inventory check',
+                      { icon: Boxes, label: a.productId + ' · inventory check',
                         text: a.warehouseName + ': ' + a.stockAtPick.onHand + ' on hand, ' +
                           a.stockAtPick.reserved + ' reserved → ' + a.stockAtPick.available + ' available' +
                           (a.stockAtPick.incomingByDue > 0 ? ', +' + a.stockAtPick.incomingByDue + ' inbound by due' : '') },
-                      { icon: Zap, label: 'Optimization engine',
-                        text: a.candidates.length + ' docks scored on landed cost + strategy-weighted ETA' },
-                      { icon: WarehouseIcon, label: 'Recommended dock',
+                      { icon: WarehouseIcon, label: 'Optimal dock for ' + a.productId,
                         text: a.warehouseName + ' — ' + a.distKm.toFixed(1) + ' km road, ' +
-                          a.transitHr.toFixed(2) + 'h transit' },
-                      { icon: Clock, label: 'Dispatch schedule',
-                        text: a.wavePolicy.replace(/-/g, ' ') + ' · depart ' + hLabel(a.departHr) +
-                          ' · pick cutoff ' + hLabel(a.cutoffHr) },
-                      { icon: Truck, label: 'Delivery assignment',
-                        text: (a.tripId || '—') + ' / van ' + (a.vehicleId || '—') +
-                          (a.stopSeq ? ' · stop ' + a.stopSeq : '') + ' · ETA ' + hLabel(a.etaHr) +
-                          ' vs due ' + hLabel(a.dueHr) },
-                      { icon: Package, label: 'Inventory after plan',
-                        text: a.warehouseId + ' ' + a.productId + ': ' + a.stockAtPick.onHand +
-                          ' → ' + Math.max(0, a.stockAtPick.onHand - a.qty) + ' on hand' },
+                          a.transitHr.toFixed(2) + 'h transit · ETA ' + hLabel(a.etaHr) + ' vs due ' + hLabel(a.dueHr) +
+                          (a.tripId ? ' · ' + a.tripId + ' / van ' + (a.vehicleId || '—') + (a.stopSeq ? ' · stop ' + a.stopSeq : '') : '') },
                     ];
                     return (
                       <div key={a.key} className="space-y-1.5">
@@ -434,10 +486,10 @@ export function Fulfillment() {
                     );
                   })}
 
-                  {selectedAssignments.slice(0, 1).map(a => (
+                  {selectedAssignments.map(a => (
                     <div key={'cand' + a.key} className="pt-2 border-t border-[#1e1e2e]">
                       <div className="text-[10px] font-mono uppercase tracking-widest text-[#3a3a50] mb-2">
-                        Why this dock
+                        {a.productId} — all warehouses → this customer · optimal first
                       </div>
                       <table className="w-full text-[11px]">
                         <thead>
@@ -456,6 +508,8 @@ export function Fulfillment() {
                                 c.warehouseId === a.warehouseId && 'bg-emerald-500/5')}>
                               <td className="py-1 font-mono text-[#c0c0d0]">
                                 {c.warehouseId === a.warehouseId ? '▸ ' : ''}{c.warehouseId}
+                                {c.warehouseId === a.warehouseId &&
+                                  <span className="ml-1 text-[9px] font-mono text-emerald-400 border border-emerald-500/30 rounded px-1">OPTIMAL</span>}
                               </td>
                               <td className="text-right font-mono text-[#8080a0]">{c.distKm.toFixed(1)}</td>
                               <td className="text-right font-mono text-[#8080a0]">{hLabel(c.etaHr)}</td>
