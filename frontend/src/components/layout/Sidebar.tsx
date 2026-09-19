@@ -9,7 +9,7 @@ export type Page =
   | 'landing' | 'dashboard' | 'workspace' | 'fulfill' | 'map'
   | 'demand' | 'algorithms' | 'sensitivity' | 'scenarios'
   | 'import' | 'history' | 'docs' | 'settings'
-  | 'tenants' | 'year';
+  | 'tenants' | 'year' | 'warehouses';
 
 const navItems: { id: Page; label: string; icon: React.ElementType; section?: string }[] = [
   { id: 'dashboard',   label: 'Overview',              icon: LayoutDashboard, section: 'Main' },
@@ -23,6 +23,7 @@ const navItems: { id: Page; label: string; icon: React.ElementType; section?: st
   { id: 'sensitivity', label: 'Sensitivity',          icon: Sliders, section: 'Analysis' },
   { id: 'scenarios',   label: 'Scenarios',            icon: Bookmark },
   { id: 'import',      label: 'Data Import',          icon: Upload, section: 'Data' },
+  { id: 'warehouses',  label: 'Warehouses',           icon: Warehouse },
   { id: 'history',     label: 'History',              icon: History },
   { id: 'docs',        label: 'Documentation',        icon: BookOpen, section: 'Help' },
   { id: 'settings',    label: 'Settings',             icon: Settings },

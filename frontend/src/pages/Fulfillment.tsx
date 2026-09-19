@@ -11,7 +11,7 @@ import {
 import {
   api, type FulfillDemo, type FulfillPlan, type FulfillOrderRow, type FulfillParamsIn, type Assignment,
 } from '@/lib/api';
-import { CustomerMap, DockTable } from './CustomerMap';
+import { CustomerMap, DockTable, FlowTimeline } from './CustomerMap';
 
 type Tab = 'orders' | 'inventory' | 'routes' | 'storage' | 'rebalance';
 
@@ -42,6 +42,14 @@ export function hLabel(h: number | null | undefined): string {
   if (h === 0) return 'now';
   if (h < 1) return Math.max(1, Math.round(h * 60)) + 'm';
   return h.toFixed(h < 10 ? 1 : 0) + 'h';
+}
+
+/** Absolute calendar date for an hours-from-now stamp ("Sep 20, 14:30").
+ *  Plans run from "now", so every ETA/departure becomes a real date. */
+export function dateLabel(h: number | null | undefined): string {
+  if (h == null) return '—';
+  const d = new Date(Date.now() + h * 3600e3);
+  return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
 function Kpi({ label, value, sub, icon: Icon, tone = 'blue' }: {
@@ -200,6 +208,12 @@ export function Fulfillment() {
         <div>
           <h1 className="text-lg font-semibold text-white flex items-center gap-2">
             <Truck size={16} className="text-blue-400" />Order Fulfillment
+            {demo?.warehouseVia && (
+              <span className="text-[10px] font-mono font-normal text-[#8080a0] border border-[#1e1e2e] rounded px-1.5 py-0.5"
+                title="Where the warehouse list came from: Supabase DB, local file, or built-in seed">
+                warehouses via {demo.warehouseVia}
+              </span>
+            )}
           </h1>
           <p className="text-xs text-[#4a4a60] mt-0.5">
             Order allocation · inventory · dispatch waves · vehicle routes · rebalancing &amp; storage
@@ -290,8 +304,8 @@ export function Fulfillment() {
               <span className="text-sm font-medium text-white flex items-center gap-1.5">
                 <Route size={12} className="text-blue-400" />
                 {selectedOrder
-                  ? <>Customer map — <span className="font-mono text-blue-300">{selectedOrder.customerName}</span>
-                    <span className="text-[#4a4a60] font-mono text-[11px]">({selectedOrder.orderId})</span></>
+                  ? <>Customer map — live delivery view · <span className="font-mono text-blue-300">{selectedOrder.customerName}</span>
+                    <span className="text-[#4a4a60] font-mono text-[11px]"> ({selectedOrder.orderId} · lanes/markers clickable)</span></>
                   : 'Network view — who ships to whom'}
               </span>
               <div className="flex items-center gap-3 text-[10px] font-mono text-[#4a4a60]">
@@ -432,10 +446,10 @@ export function Fulfillment() {
                       <td className="px-4 py-2 font-mono text-[#c0c0d0]">{o.orderId}</td>
                       <td className="px-3 py-2 text-[#8080a0] max-w-[9rem] truncate">{o.customerName}</td>
                       <td className="px-3 py-2"><Badge variant={PRIORITY_VARIANT[o.priority]}>{o.priority}</Badge></td>
-                      <td className="px-3 py-2 text-right font-mono text-[#8080a0]">{hLabel(o.dueHr)}</td>
+                      <td className="px-3 py-2 text-right font-mono text-[#8080a0]" title={'due ' + dateLabel(o.dueHr)}>{hLabel(o.dueHr)}</td>
                       <td className="px-3 py-2 font-mono text-[#c0c0d0]">{o.warehouses.join(' + ') || '—'}</td>
-                      <td className="px-3 py-2 text-right font-mono text-[#8080a0]">{hLabel(o.departHr)}</td>
-                      <td className="px-3 py-2 text-right font-mono text-[#c0c0d0]">{hLabel(o.etaHr)}</td>
+                      <td className="px-3 py-2 text-right font-mono text-[#8080a0]" title={'depart ' + dateLabel(o.departHr)}>{hLabel(o.departHr)}</td>
+                      <td className="px-3 py-2 text-right font-mono text-[#c0c0d0]" title={'ETA ' + dateLabel(o.etaHr)}>{hLabel(o.etaHr)}</td>
                       <td className={cn('px-3 py-2 text-right font-mono',
                         (o.slackHr ?? 0) < 0 ? 'text-red-400' : 'text-emerald-400')}>
                         {o.slackHr == null ? '—' : (o.slackHr >= 0 ? '+' : '') + o.slackHr.toFixed(1) + 'h'}
@@ -459,7 +473,7 @@ export function Fulfillment() {
                     <div>
                       <div className="text-sm font-medium text-white font-mono">{selectedOrder.orderId}</div>
                       <div className="text-[11px] text-[#4a4a60] mt-0.5">
-                        {selectedOrder.customerName} · {selectedOrder.customerId} · due {hLabel(selectedOrder.dueHr)}
+                        {selectedOrder.customerName} · {selectedOrder.customerId} · due {dateLabel(selectedOrder.dueHr)}
                       </div>
                     </div>
                     <div className="flex items-center gap-1.5">
@@ -470,6 +484,7 @@ export function Fulfillment() {
                 </CardHeader>
                 <CardBody className="space-y-3">
                   <div className="text-[10px] font-mono uppercase tracking-widest text-blue-300">Customer delivery recommendation</div>
+                  <FlowTimeline assignments={selectedAssignments} />
                   {selectedAssignments.map(a => {
                     const steps = [
                       { icon: Boxes, label: a.productId + ' · inventory check',
@@ -478,7 +493,7 @@ export function Fulfillment() {
                           (a.stockAtPick.incomingByDue > 0 ? ', +' + a.stockAtPick.incomingByDue + ' inbound by due' : '') },
                       { icon: WarehouseIcon, label: 'Optimal dock for ' + a.productId,
                         text: a.warehouseName + ' — ' + a.distKm.toFixed(1) + ' km road, ' +
-                          a.transitHr.toFixed(2) + 'h transit · ETA ' + hLabel(a.etaHr) + ' vs due ' + hLabel(a.dueHr) +
+                          a.transitHr.toFixed(2) + 'h transit · ETA ' + dateLabel(a.etaHr) + ' vs due ' + dateLabel(a.dueHr) +
                           (a.tripId ? ' · ' + a.tripId + ' / van ' + (a.vehicleId || '—') + (a.stopSeq ? ' · stop ' + a.stopSeq : '') : '') },
                     ];
                     return (
@@ -527,7 +542,7 @@ export function Fulfillment() {
                                   <span className="ml-1 text-[9px] font-mono text-emerald-400 border border-emerald-500/30 rounded px-1">OPTIMAL</span>}
                               </td>
                               <td className="text-right font-mono text-[#8080a0]">{c.distKm.toFixed(1)}</td>
-                              <td className="text-right font-mono text-[#8080a0]">{hLabel(c.etaHr)}</td>
+                              <td className="text-right font-mono text-[#8080a0]">{dateLabel(c.etaHr)}</td>
                               <td className="text-right font-mono text-[#8080a0]">
                                 {c.available}{c.incomingByDue > 0 ? ' (+' + c.incomingByDue + ')' : ''}
                               </td>

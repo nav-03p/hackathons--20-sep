@@ -35,6 +35,22 @@ create table if not exists public.wlo_runs (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.wlo_warehouses (
+  id text primary key,
+  name text not null,
+  x numeric not null default 50,
+  y numeric not null default 50,
+  capacity numeric not null default 500,
+  storage_m3 numeric not null default 3,
+  throughput_per_hr numeric not null default 100,
+  handling_cost_per_unit numeric not null default 1.2,
+  fixed_operating_cost numeric not null default 600,
+  open boolean not null default true,
+  waves jsonb not null default '[8,12,16,20]',
+  vehicles jsonb not null default '[]',
+  updated_at timestamptz not null default now()
+);
+
 create index if not exists wlo_runs_company_created_idx on public.wlo_runs (company_id, created_at desc);
 
 -- The server accesses this schema with the service-role key. If clients are

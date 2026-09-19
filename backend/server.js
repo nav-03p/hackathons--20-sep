@@ -81,6 +81,7 @@ const year = require('./yearsim.js');
 const shared = require('./shared.js');
 const envdb = require('./envdb.js');
 const fulfill = require('./fulfill.js');
+const whstore = require('./whstore.js');
 // Per-company inventory ledger for the fulfillment layer (on-hand/reserved/incoming).
 // Kept in-process like the rest of the repo's state: zero deps, no migrations.
 const INV = {};
@@ -310,11 +311,40 @@ const server = http.createServer(function(req,res){
     if(req.method==='GET' && u.pathname==='/api/fulfill/demo'){
       // Ready-to-run fulfillment scenario: SKUs, sites with stock/vehicles/waves,
       // inbound replenishments, orders with deadlines, and forecast demand.
+      // Warehouses come from the persistent registry (DB/file) so edits stick;
+      // stock/incoming are layered on top from the demo grid.
       const d=fulfill.demoFulfill({seed:u.query.seed!=null?+u.query.seed:7,
         orders:u.query.orders!=null?+u.query.orders:18});
+      try {
+        const reg = await whstore.list(envdb);
+        if (reg && reg.warehouses && reg.warehouses.length) {
+          const stockGrid = { W1:{P1:24,P2:400,P3:6,P4:60}, W2:{P1:12,P2:900,P3:4,P4:25}, W3:{P1:6,P2:120,P3:10,P4:40}, W4:{P1:3,P2:200,P3:1,P4:6} };
+          const incomingGrid = { W1:[{productId:'P1',qty:40,etaHr:18}], W3:[{productId:'P3',qty:12,etaHr:30}] };
+          d.warehouses = reg.warehouses.map(function (w) {
+            const fleet = (w.vehicles && w.vehicles.length ? w.vehicles : [{ id: w.id + '-V1', capacityUnits: 20, speedKmH: 30, maxStops: 8 }]);
+            return Object.assign({}, w, {
+              stock: Object.assign({}, stockGrid[w.id] || { P1: 10, P2: 200, P3: 5, P4: 20 }),
+              incoming: (incomingGrid[w.id] || []).slice(), reserved: {}, vehicles: fleet,
+            });
+          });
+          d.warehouseVia = reg.via;
+        }
+      } catch (e) {}
       send(res,200,Object.assign({storedInventory:INV[invKeyFor(req)]||{},
         inventoryOps:'POST /api/inventory {op:{type:receive|reserve|release|commit|adjust,warehouseId,productId,qty}}'},d));
       return;
+    }
+    if(req.method==='GET' && u.pathname==='/api/warehouses'){
+      // Persistent warehouse registry: Supabase wlo_warehouses -> backend/data/warehouses.json -> seed.
+      const reg = await whstore.list(envdb);
+      send(res,200,{warehouses:reg.warehouses, via:reg.via, updatedAt:reg.updatedAt}); return;
+    }
+    if(req.method==='POST' && u.pathname==='/api/warehouses'){
+      // Save the whole registry (from the Warehouses UI). Body: {warehouses:[...]}.
+      const b=JSON.parse(await readBody(req)||'{}');
+      if(!Array.isArray(b.warehouses)){ send(res,400,{error:'warehouses array required'}); return; }
+      const out = await whstore.saveAll(envdb, b.warehouses);
+      send(res,200,{saved:true, via:out.via, count:out.warehouses.length, remote:out.remote, warehouses:out.warehouses}); return;
     }
     if(req.method==='POST' && u.pathname==='/api/fulfill'){
       // Full operational plan: allocate -> schedule waves -> assign vehicles ->

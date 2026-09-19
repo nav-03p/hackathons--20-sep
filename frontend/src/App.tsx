@@ -11,6 +11,7 @@ import { SensitivityAnalysis } from '@/pages/SensitivityAnalysis';
 import { ScenarioManager } from '@/pages/ScenarioManager';
 import { DataImport } from '@/pages/DataImport';
 import { Fulfillment } from '@/pages/Fulfillment';
+import { Warehouses } from '@/pages/Warehouses';
 import { OptimizationHistory } from '@/pages/OptimizationHistory';
 import { Documentation } from '@/pages/Documentation';
 import { Settings } from '@/pages/Settings';
@@ -24,6 +25,7 @@ function AppPage({ page, navigate }: { page: Page; navigate: (p: Page) => void }
     case 'dashboard':    return <Dashboard onNavigate={navigate} />;
     case 'workspace':    return <OptimizationWorkspace />;
     case 'fulfill':      return <Fulfillment />;
+    case 'warehouses':   return <Warehouses />;
     case 'map':          return <MapExplorer />;
     case 'demand':       return <DemandSimulation />;
     case 'algorithms':   return <AlgorithmComparison />;

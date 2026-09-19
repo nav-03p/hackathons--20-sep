@@ -1,6 +1,9 @@
+import { useEffect, useRef } from 'react';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import { cn, fmt } from '@/lib/utils';
 import { MapPin } from 'lucide-react';
-import { hLabel } from './Fulfillment';
+import { dateLabel, hLabel } from './Fulfillment';
 import type { Assignment, FulfillDemo, FulfillOrderRow, FulfillPlan } from '@/lib/api';
 
 const capOf = (w: FulfillDemo['warehouses'][number]) => {
@@ -8,9 +11,9 @@ const capOf = (w: FulfillDemo['warehouses'][number]) => {
   return fmt(t >= 1e9 ? (w.capacity ?? 0) : t);
 };
 
-type Dock = { w: FulfillDemo['warehouses'][number]; a: Assignment | undefined; km: number; eta: number; optimal: boolean };
+export type Dock = { w: FulfillDemo['warehouses'][number]; a: Assignment | undefined; km: number; eta: number; optimal: boolean };
 
-function dockList(plan: FulfillPlan, demo: FulfillDemo, order: FulfillOrderRow, assignments: Assignment[]): Dock[] {
+export function dockList(plan: FulfillPlan, demo: FulfillDemo, order: FulfillOrderRow, assignments: Assignment[]): Dock[] {
   const roadKm = (wx: number, wy: number) =>
     Math.hypot(order.x - wx, order.y - wy) * (plan.params.roadFactor ?? 1.35);
   const roadHr = (km: number) => (plan.params.kmPerHour ? km / plan.params.kmPerHour : 0);
@@ -22,27 +25,72 @@ function dockList(plan: FulfillPlan, demo: FulfillDemo, order: FulfillOrderRow, 
   }).sort((p, q) => p.km - q.km);
 }
 
-/** Customer-centred map: ONE customer, lanes from EVERY warehouse.
- *  Each lane + warehouse is tagged with km, travel time, capacity and
- *  expected delivery (ETA) so you can read the optimal dock at a glance. */
+const ll = (p: { x: number; y: number }) =>
+  [12.79 + p.y * 0.004, 77.35 + p.x * 0.0047] as L.LatLngExpression;
+
+const dot = (color: string, size = 12, border = '#fff') => new L.DivIcon({
+  className: '',
+  html: `<div style="background:${color};width:${size}px;height:${size}px;border-radius:50%;border:2px solid ${border};box-shadow:0 0 0 3px rgba(0,0,0,.35)"></div>`,
+  iconSize: [size, size], iconAnchor: [size / 2, size / 2],
+});
+const siteIcon = (label: string, optimal: boolean) => new L.DivIcon({
+  className: '',
+  html: `<div style="background:${optimal ? '#22c55e' : '#16a34a99'};color:#fff;font:700 10px monospace;min-width:26px;height:26px;line-height:22px;text-align:center;border-radius:6px;border:2px solid ${optimal ? '#fff' : '#ffffff55'};box-shadow:0 2px 8px rgba(0,0,0,.5);padding:0 4px">${label}</div>`,
+  iconSize: [30, 26], iconAnchor: [15, 13],
+});
+
+/** Customer-centred LIVE map (delivery-app style): ONE customer, lanes from
+ *  EVERY DB warehouse, each tagged km + time + ETA date, plus a full flow
+ *  timeline: warehouse -> dispatch date -> transit -> customer date + WHY. */
 export function CustomerMap({ plan, demo, order, assignments, areaOf, onClear }: {
   plan: FulfillPlan; demo: FulfillDemo; order: FulfillOrderRow;
   assignments: Assignment[]; areaOf: (n: string) => string; onClear: () => void;
 }) {
-  const pts = [{ x: order.x, y: order.y },
-    ...assignments.map(a => {
-      const w = demo.warehouses.find(x => x.id === a.warehouseId);
-      return w ? { x: w.x, y: w.y } : null;
-    }).filter(Boolean) as { x: number; y: number }[]];
-  const lo = { x: Math.min(...pts.map(p => p.x)) - 8, y: Math.min(...pts.map(p => p.y)) - 8 };
-  const hi = { x: Math.max(...pts.map(p => p.x)) + 8, y: Math.max(...pts.map(p => p.y)) + 8 };
-  const spanX = Math.max(12, hi.x - lo.x), spanY = Math.max(12, hi.y - lo.y);
-  const X = (x: number) => 6 + ((x - lo.x) / spanX) * 88;
-  const Y = (y: number) => 100 - (6 + ((y - lo.y) / spanY) * 88);
+  const divRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<L.Map | null>(null);
+  const docks = dockList(plan, demo, order, assignments);
   const addr = areaOf(order.customerName) + ' \u00b7 blk ' + (1 + Math.floor(order.x % 9)) +
     ', st ' + (1 + Math.floor(order.y % 12)) + ' \u2014 grid ' +
     order.x.toFixed(1) + 'E / ' + order.y.toFixed(1) + 'N';
-  const docks = dockList(plan, demo, order, assignments);
+
+  useEffect(() => {
+    if (!divRef.current) return;
+    if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; }
+    const m = L.map(divRef.current, { zoomControl: true }).setView(ll(order), 12);
+    mapRef.current = m;
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      attribution: '&copy; CARTO &copy; OpenStreetMap contributors', maxZoom: 19,
+    }).addTo(m);
+    const bounds: L.LatLngExpression[] = [ll(order)];
+    docks.forEach(({ w, a, km, eta, optimal }) => {
+      const bad = a && (a.atRisk || a.lateHr > 0 || a.split);
+      const color = optimal ? '#22c55e' : bad ? '#ef4444' : '#3b82f6';
+      const line = L.polyline([ll(w), ll(order)], {
+        color, weight: optimal ? 4 : 2.5, opacity: optimal ? 1 : 0.55,
+        dashArray: optimal ? undefined : '8 6',
+      }).addTo(m);
+      line.bindTooltip(
+        `<b>${w.id} \u2192 ${order.customerName}</b><br/>${km.toFixed(1)} km \u00b7 travel ${hLabel(plan.params.kmPerHour ? km / plan.params.kmPerHour : 0)}<br/>ETA ${dateLabel(eta)}${optimal ? ' \u2605 OPTIMAL' : ''}`,
+        { sticky: true }
+      );
+      line.bindPopup(
+        `<b>${w.name || w.id} \u2192 ${order.customerName}</b><br/>` +
+        `Distance: <b>${km.toFixed(1)} km</b><br/>` +
+        `Expected delivery: <b>${dateLabel(eta)}</b><br/>` +
+        (a ? `Dispatch: ${dateLabel(a.departHr)} (${a.wavePolicy.replace(/-/g, ' ')})<br/>Trip: ${a.tripId || '\u2014'} / van ${a.vehicleId || '\u2014'}${a.stopSeq ? ' \u00b7 stop ' + a.stopSeq : ''}<br/>Why: ${a.candidates.length} docks scored, cheapest feasible dock` : 'No stock for this order at this dock')
+      );
+      bounds.push(ll(w));
+      L.marker(ll(w), { icon: siteIcon(w.id.replace(/^W/, ''), optimal) }).addTo(m)
+        .bindPopup(`<b>${w.name || w.id}</b><br/>Capacity: ${capOf(w)}<br/>${optimal ? '\u2605 OPTIMAL dock for this order' : km.toFixed(1) + ' km from customer'}`);
+    });
+    L.marker(ll(order), { icon: dot('#60a5fa', 16) }).addTo(m)
+      .bindPopup(`<b>${order.customerName}</b><br/>${addr}<br/>Due ${dateLabel(order.dueHr)}`)
+      .openPopup();
+    m.fitBounds(L.latLngBounds(bounds).pad(0.25));
+    return () => { m.remove(); mapRef.current = null; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [order.orderId, plan.runtimeMs, demo.warehouses.length]);
+
   return (
     <>
       <div className="mb-3 flex items-start gap-2 rounded-md border border-blue-500/25 bg-blue-500/5 px-3 py-2">
@@ -52,7 +100,7 @@ export function CustomerMap({ plan, demo, order, assignments, areaOf, onClear }:
             {order.customerName} <span className="text-[#4a4a60] font-mono">\u00b7 {order.customerId} \u00b7 {order.orderId}</span>
           </div>
           <div className="text-[11px] text-[#8080a0] truncate">
-            User address: {addr} \u00b7 due {hLabel(order.dueHr)} \u00b7 {order.priority}
+            User address: {addr} \u00b7 due {dateLabel(order.dueHr)} \u00b7 {order.priority}
           </div>
         </div>
         <button onClick={onClear}
@@ -60,64 +108,38 @@ export function CustomerMap({ plan, demo, order, assignments, areaOf, onClear }:
           show all \u2715
         </button>
       </div>
-      <svg viewBox="0 0 100 100" className="w-full h-[420px]">
-        {[20, 40, 60, 80].map(v => (
-          <g key={'g' + v}>
-            <line x1={v} y1={6} x2={v} y2={94} stroke="#16161f" strokeWidth={0.2} />
-            <line x1={6} y1={v} x2={94} y2={v} stroke="#16161f" strokeWidth={0.2} />
-          </g>
-        ))}
-        {docks.map(({ w, a, km, eta, optimal }) => {
-          const bad = a && (a.atRisk || a.lateHr > 0 || a.split);
-          const mx = (X(w.x) + X(order.x)) / 2, my = (Y(w.y) + Y(order.y)) / 2;
-          return (
-            <g key={'lane' + w.id}>
-              <line x1={X(w.x)} y1={Y(w.y)} x2={X(order.x)} y2={Y(order.y)}
-                stroke={optimal ? '#22c55e' : bad ? '#ef4444' : '#3b82f6'}
-                strokeWidth={optimal ? 0.9 : 0.45}
-                opacity={optimal ? 1 : 0.55}
-                strokeDasharray={optimal ? '' : '2 1.2'}
-                strokeLinecap="round" />
-              <rect x={mx - 11} y={my - 3.4} width={22} height={6.4} rx={1.2}
-                fill="#0d0d16" stroke={optimal ? '#22c55e55' : '#2a2a3a'} strokeWidth={0.3} />
-              <text x={mx} y={my + 0.4} textAnchor="middle" fontSize={2.5}
-                fill={optimal ? '#4ade80' : '#c0c0d0'} fontFamily="monospace"
-                fontWeight={optimal ? 'bold' : 'normal'}>
-                {km.toFixed(1)}km \u00b7 {hLabel(eta)}
-              </text>
-            </g>
-          );
-        })}
-        <g>
-          <circle cx={X(order.x)} cy={Y(order.y)} r={2.6} fill="#3b82f6" fillOpacity={0.15} />
-          <circle cx={X(order.x)} cy={Y(order.y)} r={1.4} stroke="#ffffff" strokeWidth={0.7} fill="#60a5fa" />
-          <text x={X(order.x)} y={Y(order.y) - 3.4} textAnchor="middle" fontSize={2.8}
-            fill="#ffffff" fontFamily="monospace" fontWeight="bold">
-            {order.customerName}
-          </text>
-        </g>
-        {demo.warehouses.map(w => {
-          const lane = docks.find(d => d.w.id === w.id);
-          return (
-            <g key={w.id}>
-              <rect x={X(w.x) - 2.4} y={Y(w.y) - 2.4} width={4.8} height={4.8} rx={0.8}
-                fill="#22c55e" fillOpacity={lane && !lane.optimal ? 0.45 : 1}
-                stroke={lane?.optimal ? '#ffffff' : 'none'} strokeWidth={lane?.optimal ? 0.6 : 0} />
-              <text x={X(w.x) + 3.4} y={Y(w.y) - 0.6} fontSize={2.5}
-                fill={lane?.optimal ? '#4ade80' : '#8080a0'} fontFamily="monospace"
-                fontWeight={lane?.optimal ? 'bold' : 'normal'}>
-                {lane?.optimal ? '\u25b8 ' : ''}{(w.name || w.id).split(' ')[0]}
-                {lane ? ' \u00b7 ' + lane.km.toFixed(0) + 'km' : ''}
-              </text>
-              <text x={X(w.x) + 3.4} y={Y(w.y) + 2.4} fontSize={2.1} fill="#4a4a60" fontFamily="monospace">
-                cap {capOf(w)}
-                {lane ? ' \u00b7 ETA ' + hLabel(lane.eta) + (lane.optimal ? ' \u2605' : '') : ''}
-              </text>
-            </g>
-          );
-        })}
-      </svg>
+      <div ref={divRef} className="w-full h-[420px] rounded-md border border-[#1e1e2e] z-0" />
+      <div className="mt-1 text-[10px] font-mono text-[#3a3a50]">Live map \u00b7 {docks.length} DB warehouses \u00b7 click any lane or marker for dates \u00b7 green = optimal</div>
     </>
+  );
+}
+
+export function FlowTimeline({ assignments }: { assignments: Assignment[] }) {
+  const a = assignments[0];
+  if (!a) return null;
+  const steps = [
+    { t: `At ${a.warehouseName} (${a.warehouseId})`, d: dateLabel(a.departHr), s: `${a.stockAtPick.onHand} on hand \u00b7 ${a.stockAtPick.reserved} reserved \u2192 ${a.stockAtPick.available} available${a.stockAtPick.incomingByDue > 0 ? ` \u00b7 +${a.stockAtPick.incomingByDue} inbound by due` : ''}` },
+    { t: `Dispatch ${a.wavePolicy.replace(/-/g, ' ')}`, d: dateLabel(a.departHr), s: `pick cutoff ${dateLabel(a.cutoffHr)} \u00b7 ${a.distKm.toFixed(1)} km road` },
+    { t: `In transit ${a.tripId || ''} / van ${a.vehicleId || '\u2014'}${a.stopSeq ? ` \u00b7 stop ${a.stopSeq}` : ''}`, d: dateLabel(a.departHr) + ' \u2192 ' + dateLabel(a.etaHr), s: `${a.transitHr.toFixed(2)}h drive` },
+    { t: `Delivered to ${a.customerName}`, d: dateLabel(a.etaHr), s: a.lateHr > 0 ? `LATE +${a.lateHr.toFixed(1)}h vs due ${dateLabel(a.dueHr)}` : `on time \u00b7 due ${dateLabel(a.dueHr)}` },
+  ];
+  return (
+    <div className="rounded-md border border-emerald-500/25 bg-emerald-500/5 px-3 py-2.5">
+      <div className="text-[10px] font-mono uppercase tracking-widest text-emerald-300 mb-2">Full flow \u2014 why this dock on these dates</div>
+      {steps.map((s, i) => (
+        <div key={i} className="flex items-start gap-2">
+          <div className="flex flex-col items-center pt-0.5">
+            <div className="w-5 h-5 rounded-full bg-emerald-500/15 border border-emerald-500/40 flex items-center justify-center text-[10px] font-mono text-emerald-300">{i + 1}</div>
+            {i < steps.length - 1 && <div className="w-px flex-1 min-h-[12px] bg-emerald-500/25" />}
+          </div>
+          <div className="pb-2 min-w-0">
+            <div className="text-[11px] text-white">{s.t} <span className="font-mono text-emerald-300">{s.d}</span></div>
+            <div className="text-[11px] text-[#6b6b80]">{s.s}</div>
+          </div>
+        </div>
+      ))}
+      <div className="text-[11px] text-[#6b6b80] pt-1 border-t border-emerald-500/15">Why: {a.candidates.length} docks scored on landed cost + ETA; {a.warehouseName} was the cheapest feasible dock with stock ({a.stockAtPick.available} avail) on {dateLabel(a.departHr)}.</div>
+    </div>
   );
 }
 
@@ -132,6 +154,7 @@ export function DockTable({ plan, demo, order, assignments }: {
         <thead>
           <tr className="text-[10px] font-mono uppercase text-[#3a3a50] border-b border-[#1e1e2e] bg-[#0d0d16]">
             <th className="text-left px-3 py-1.5 font-medium">Warehouse \u2192 user</th>
+            <th className="text-right px-2 py-1.5 font-medium">Stock</th>
             <th className="text-right px-2 py-1.5 font-medium">Capacity</th>
             <th className="text-right px-2 py-1.5 font-medium">Km</th>
             <th className="text-right px-2 py-1.5 font-medium">Travel time</th>
@@ -146,11 +169,12 @@ export function DockTable({ plan, demo, order, assignments }: {
                 {optimal ? '\u25b8 ' : ''}{w.id} <span className="text-[#4a4a60]">\u2192 {order.customerName}</span>
                 {optimal && <span className="ml-1 text-[9px] text-emerald-400 border border-emerald-500/30 rounded px-1">OPTIMAL</span>}
               </td>
+              <td className="px-2 py-1.5 text-right font-mono text-[#c0c0d0]">{a ? `${a.stockAtPick.available} avail` : '\u2014'}</td>
               <td className="px-2 py-1.5 text-right font-mono text-[#8080a0]">{capOf(w)}</td>
               <td className="px-2 py-1.5 text-right font-mono text-[#c0c0d0]">{km.toFixed(1)} km</td>
               <td className="px-2 py-1.5 text-right font-mono text-[#8080a0]">{hLabel(roadHr(km))}</td>
               <td className={cn('px-2 py-1.5 text-right font-mono', a && a.lateHr > 0 ? 'text-red-400' : 'text-emerald-400')}>
-                ETA {hLabel(eta)}{a ? ' \u00b7 depart ' + hLabel(a.departHr) : ''}
+                {dateLabel(eta)}{a ? ' \u00b7 dep ' + dateLabel(a.departHr) : ''}
               </td>
               <td className="px-3 py-1.5 text-[#6b6b80]">
                 {a ? (a.lateHr > 0 ? 'late +' + a.lateHr.toFixed(1) + 'h'

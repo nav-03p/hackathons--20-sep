@@ -150,4 +150,36 @@ function llmChat(messages, opts) { // OpenRouter (backend .env), fallback to Ope
     req.end(body);
   });
 }
-module.exports = { login, signup, verify, saveDataset, saveRun, listRuns, llmChat, sbUrl };
+async function listWarehouses() {
+  const r = await sb({ path: '/rest/v1/wlo_warehouses?select=*&order=id', method: 'GET' });
+  if (!r.ok) return null;
+  try {
+    const rows = JSON.parse(r.body);
+    return rows.map(function (w) {
+      return { id: w.id, name: w.name, x: +w.x, y: +w.y, capacity: +w.capacity,
+        storageM3: +w.storage_m3, throughputPerHr: +w.throughput_per_hr,
+        handlingCostPerUnit: +w.handling_cost_per_unit,
+        fixedOperatingCost: +w.fixed_operating_cost,
+        open: w.open !== false, waves: w.waves || [8, 12, 16, 20],
+        vehicles: w.vehicles || [{ id: w.id + '-V1', capacityUnits: 20, speedKmH: 30, maxStops: 8 }] };
+    });
+  } catch { return null; }
+}
+async function saveWarehouses(warehouses) {
+  if (!sbUrl()) return { saved: false, via: 'local-only' };
+  const rows = (warehouses || []).map(function (w) {
+    return { id: w.id, name: w.name || w.id, x: +w.x || 0, y: +w.y || 0,
+      capacity: +w.capacity || 500, storage_m3: +w.storageM3 || 3,
+      throughput_per_hr: +w.throughputPerHr || 100,
+      handling_cost_per_unit: +w.handlingCostPerUnit || 1.2,
+      fixed_operating_cost: +w.fixedOperatingCost || 600,
+      open: w.open !== false, waves: w.waves || [8, 12, 16, 20],
+      vehicles: w.vehicles || [], updated_at: new Date().toISOString() };
+  });
+  for (const row of rows) {
+    const r = await sb({ path: '/rest/v1/wlo_warehouses?on_conflict=id', method: 'POST', service: true }, row);
+    if (!r.ok) return { saved: false, via: 'supabase-error', status: r.status };
+  }
+  return { saved: true, via: 'supabase', count: rows.length };
+}
+module.exports = { login, signup, verify, saveDataset, saveRun, listRuns, llmChat, sbUrl, listWarehouses, saveWarehouses };

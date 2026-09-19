@@ -54,6 +54,9 @@ export const api = {
   inventory: (body: InventoryBody) => post<InventoryResult>('/api/inventory', body),
   rebalance: (body: RebalanceBody) => post<RebalanceResult>('/api/rebalance', body),
   storage: (body: StorageBody) => post<StorageResult>('/api/storage', body),
+  warehouses: () => get<WarehousesResult>('/api/warehouses'),
+  saveWarehouses: (body: { warehouses: FulfillWarehouse[] }) =>
+    post<WarehousesResult & { saved: boolean; count: number }>('/api/warehouses', body),
 };
 
 // ---------- types matching backend wlopt JSON ----------
@@ -321,6 +324,13 @@ export interface FulfillDemo {
   demand: DemandMap;
   params: FulfillParamsIn;
   note: string;
+  warehouseVia?: string;
+}
+
+export interface WarehousesResult {
+  warehouses: FulfillWarehouse[];
+  via: string;
+  updatedAt?: string | null;
 }
 
 export interface FulfillBody {
