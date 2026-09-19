@@ -25,8 +25,15 @@ export function dockList(plan: FulfillPlan, demo: FulfillDemo, order: FulfillOrd
   }).sort((p, q) => p.km - q.km);
 }
 
-const ll = (p: { x: number; y: number }) =>
-  [12.79 + p.y * 0.004, 77.35 + p.x * 0.0047] as L.LatLngExpression;
+const ll = (p: { x: number; y: number }): L.LatLngExpression => {
+  if (p.x >= 10 && p.x <= 30 && p.y >= 60 && p.y <= 90) {
+    return [p.x, p.y];
+  }
+  if (p.y >= 10 && p.y <= 30 && p.x >= 60 && p.x <= 90) {
+    return [p.y, p.x];
+  }
+  return [12.82 + (p.y / 100) * 0.28, 77.48 + (p.x / 100) * 0.28];
+};
 
 const dot = (color: string, size = 12, border = '#fff') => new L.DivIcon({
   className: '',

@@ -55,10 +55,16 @@ const MAP_TILES = MAPBOX_TOKEN
       maxZoom: 19,
     };
 
-// Optimizer coordinates stay in a compact 0–100 grid, then are rendered across
-// Bengaluru's urban area (roughly 12.8–13.2°N, 77.35–77.82°E) on the real map.
-const bengaluruLatLng = (p: { x: number; y: number }) =>
-  [12.79 + p.y * 0.004, 77.35 + p.x * 0.0047] as L.LatLngExpression;
+// Smart coordinate converter: handles both real GPS (lat ~12.9, lng ~77.5) and 0-100 normalized grid coordinates
+const toBengaluruLatLng = (p: { x: number; y: number }): L.LatLngExpression => {
+  if (p.x >= 10 && p.x <= 30 && p.y >= 60 && p.y <= 90) {
+    return [p.x, p.y];
+  }
+  if (p.y >= 10 && p.y <= 30 && p.x >= 60 && p.x <= 90) {
+    return [p.y, p.x];
+  }
+  return [12.82 + (p.y / 100) * 0.28, 77.48 + (p.x / 100) * 0.28];
+};
 
 interface PopupNeighborhood {
   lat?: number; lng?: number; [k: string]: any;
@@ -74,7 +80,7 @@ export function MapExplorer() {
   const [result, setResult] = useState<OptResult | null>(null);
   const [zoom, setZoom] = useState(13);
 
-  const latLng = bengaluruLatLng;
+  const latLng = toBengaluruLatLng;
 
   useEffect(() => {
     if (!mapRef.current || mapRefLeaflet.current) return;

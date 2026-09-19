@@ -1,10 +1,23 @@
 {
-  "name": "wlo-warehouse-optimizer",
+  "name": "gridpoint-warehouse-optimizer",
   "version": "1.0.0",
-  "description": "Intelligent Warehouse Location Optimizer — Node.js API + C++ optimization core",
+  "description": "GRIDPOINT — Warehouse Location Optimization Platform",
+  "main": "backend/server.js",
   "scripts": {
-    "build:cpp": "cd cpp && make",
+    "dev": "node scripts/dev.js",
     "start": "node backend/server.js",
-    "test": "node tests/run.js"
-  }
+    "build": "npm --prefix frontend run build",
+    "test": "node tests/run.js && node tests/year_test.js",
+    "compile-cpp": "cd cpp && g++ -std=c++17 -O2 -I include src/main.cpp -o wlopt.exe"
+  },
+  "keywords": [
+    "optimization",
+    "warehouse-location",
+    "logistics",
+    "milp",
+    "weiszfeld",
+    "simulated-annealing"
+  ],
+  "author": "",
+  "license": "MIT"
 }

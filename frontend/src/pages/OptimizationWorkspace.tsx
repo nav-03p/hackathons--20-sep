@@ -299,19 +299,24 @@ function WloMapSVG({ neighborhoods, warehouses, result, zoom, onSelect }: {
   zoom: number;
   onSelect: (item: { kind: 'demand' | 'warehouse'; id: string; label: string; detail: string }) => void;
 }) {
-  const minX = Math.min(...neighborhoods.map(n => n.x), ...warehouses.map(w => w.x)) - 5;
-  const maxX = Math.max(...neighborhoods.map(n => n.x), ...warehouses.map(w => w.x)) + 5;
-  const minY = Math.min(...neighborhoods.map(n => n.y), ...warehouses.map(w => w.y)) - 5;
-  const maxY = Math.max(...neighborhoods.map(n => n.y), ...warehouses.map(w => w.y)) + 5;
+  const xs = [...neighborhoods.map(n => n.x), ...warehouses.map(w => w.x)];
+  const ys = [...neighborhoods.map(n => n.y), ...warehouses.map(w => w.y)];
+  const minX = xs.length ? Math.min(...xs) - 0.01 : 12.9;
+  const maxX = xs.length ? Math.max(...xs) + 0.01 : 13.0;
+  const minY = ys.length ? Math.min(...ys) - 0.01 : 77.5;
+  const maxY = ys.length ? Math.max(...ys) + 0.01 : 77.6;
+  const dx = Math.max(0.001, maxX - minX);
+  const dy = Math.max(0.001, maxY - minY);
   const W = 640, H = 420;
-  const toX = (x: number) => ((x - minX) / (maxX - minX)) * W;
-  const toY = (y: number) => ((y - minY) / (maxY - minY)) * H;
+  const toX = (x: number) => ((x - minX) / dx) * W;
+  const toY = (y: number) => ((y - minY) / dy) * H;
+  const safeZoom = Math.max(0.5, zoom || 1);
   const openIds = new Set(result?.openWarehouses || []);
   const assigned = result?.assignments || {};
   const maxDemand = Math.max(...neighborhoods.map(n => n.demand), 1);
 
   return (
-    <svg viewBox={`${(W - W / zoom) / 2} ${(H - H / zoom) / 2} ${W / zoom} ${H / zoom}`} className="w-full h-full" xmlns="http://www.w3.org/2000/svg">
+    <svg viewBox={`${(W - W / safeZoom) / 2} ${(H - H / safeZoom) / 2} ${W / safeZoom} ${H / safeZoom}`} className="w-full h-full" xmlns="http://www.w3.org/2000/svg">
       {Array.from({ length: 13 }, (_, i) => (
         <line key={`h${i}`} x1="0" y1={i * 35} x2={W} y2={i * 35} stroke="#1a1a2e" strokeWidth="1" />
       ))}
