@@ -1,0 +1,8 @@
+version: "3.8"
+services:
+  backend:
+    image: node:22-alpine
+    working_dir: /app
+    volumes: ["./:/app"]
+    command: sh -c "apk add --no-cache g++ make && cd cpp && make && cd /app && node backend/server.js"
+    ports: ["4000:4000"]

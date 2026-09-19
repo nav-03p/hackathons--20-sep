@@ -1,0 +1,10 @@
+{
+  "description": "A frontend web app built with Next.js and React in TypeScript that delivers a seamless, efficient user experience for modern web projects.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}

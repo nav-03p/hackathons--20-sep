@@ -1,0 +1,10 @@
+{
+  "name": "wlo-warehouse-optimizer",
+  "version": "1.0.0",
+  "description": "Intelligent Warehouse Location Optimizer — Node.js API + C++ optimization core",
+  "scripts": {
+    "build:cpp": "cd cpp && make",
+    "start": "node backend/server.js",
+    "test": "node tests/run.js"
+  }
+}

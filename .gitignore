@@ -1,0 +1,26 @@
+# env
+.env
+.env.*
+!.env.example
+backend/.env
+
+# deps
+node_modules/
+frontend/node_modules/
+
+# builds
+dist/
+frontend/dist/
+.vite/
+frontend/.vite/
+
+# binaries & archives
+*.zip
+cpp/wlopt
+*.o
+*.out
+
+# OS / IDE
+.DS_Store
+.vscode/
+.idea/
