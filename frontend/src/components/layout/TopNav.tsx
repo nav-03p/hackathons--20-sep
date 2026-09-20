@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Search, Bell, ChevronDown, Menu, CheckCircle2, Zap, Sun, Moon } from 'lucide-react';
+import { Search, Bell, ChevronDown, Menu, Zap, Sun, Moon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Page } from './Sidebar';
 import { useStore } from '@/lib/store';
@@ -46,12 +46,6 @@ export function TopNav({ onMenuOpen, currentPage, onLogout }: {
       </div>
 
       <div className="flex-1" />
-
-      {/* Status pill — neutral, reflects backend health if available */}
-       <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-green-500/10 border border-green-500/20 status-live">
-        <CheckCircle2 size={11} className="text-green-400" />
-        <span className="text-[10px] font-mono font-medium text-green-400">Backend ready</span>
-      </div>
 
       {/* Search */}
       <div className="relative hidden lg:block">

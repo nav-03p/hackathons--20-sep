@@ -50,10 +50,10 @@ export function Warehouses() {
   const num = (v: string, fb: number) => { const n = parseFloat(v); return isFinite(n) ? n : fb; };
 
   return (
-    <div className="p-4 space-y-4 max-w-6xl mx-auto">
+    <div className="warehouses-shell page-enter p-4 md:p-7 space-y-5 max-w-7xl mx-auto">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
-          <h1 className="text-base font-semibold text-white flex items-center gap-2">
+          <h1 className="text-3xl md:text-4xl font-semibold tracking-tight text-white flex items-center gap-2">
             <WarehouseIcon size={15} className="text-emerald-400" />Warehouses
           </h1>
           <p className="text-[11px] text-[#4a4a60]">
