@@ -18,32 +18,36 @@ const COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#8b5cf6', '#ec4899'];
 function NetworkPulse({ rows }: { rows: { name: string; utilization: number; color: string }[] }) {
   const points = rows.map((row, index) => ({
     ...row,
-    x: 76 + index * 128,
-    y: index % 2 === 0 ? 78 : 142,
+    x: 160 + index * 220,
+    y: index % 2 === 0 ? 214 : 154,
   }));
 
   return (
-    <div className="relative h-[230px] overflow-hidden rounded-xl border border-cyan-400/15 bg-[#09121e]/75">
+    <div className="network-stage relative h-[360px] overflow-hidden rounded-2xl border border-cyan-400/20 bg-[#081321]/90 md:h-[430px]">
       <div className="absolute inset-0 network-grid opacity-70" />
-      <div className="absolute left-4 top-4 z-10 flex items-center gap-2 text-[10px] font-mono uppercase tracking-[0.18em] text-cyan-200/70">
-        <Radio size={12} className="animate-pulse text-cyan-300" /> Network topology
+      <div className="absolute left-5 top-5 z-10 flex items-center gap-3 text-[10px] font-mono uppercase tracking-[0.18em] text-cyan-200/70">
+        <span className="rounded-md border border-cyan-300/20 bg-cyan-300/10 p-1.5"><Route size={13} className="text-cyan-300" /></span><span>Live network topology</span>
       </div>
-      <svg viewBox="0 0 480 230" className="relative h-full w-full" aria-label="Warehouse network visualization">
+      <div className="absolute right-5 top-5 z-10 flex items-center gap-2 text-[10px] font-mono text-[#7187a2]"><span className="network-pulse-ring" /> Flow active</div>
+      <svg viewBox="0 0 760 430" className="relative h-full w-full" aria-label="Warehouse network visualization">
         <defs>
           <linearGradient id="route-gradient" x1="0" x2="1">
             <stop offset="0" stopColor="#22d3ee" stopOpacity=".15" />
             <stop offset=".5" stopColor="#60a5fa" stopOpacity=".9" />
             <stop offset="1" stopColor="#a78bfa" stopOpacity=".15" />
           </linearGradient>
-          <filter id="node-glow"><feGaussianBlur stdDeviation="4" result="blur" /><feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge></filter>
+          <filter id="node-glow"><feGaussianBlur stdDeviation="5" result="blur" /><feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge></filter>
         </defs>
+        <circle cx="380" cy="210" r="155" fill="none" stroke="#3b82f6" strokeOpacity=".08" strokeDasharray="2 11" className="network-ring" />
+        <circle cx="380" cy="210" r="100" fill="none" stroke="#22d3ee" strokeOpacity=".08" strokeDasharray="3 14" className="network-ring network-ring-slow" />
+        <path d="M 80 330 C 210 265, 235 350, 380 295 S 570 280, 700 330" fill="none" stroke="#294968" strokeOpacity=".38" strokeWidth="1" strokeDasharray="2 10" />
         {points.slice(0, -1).map((point, index) => {
           const next = points[index + 1];
-          return <g key={`${point.name}-route`}><path d={`M ${point.x} ${point.y} Q ${(point.x + next.x) / 2} ${point.y - 34} ${next.x} ${next.y}`} fill="none" stroke="url(#route-gradient)" strokeWidth="2" strokeDasharray="6 7" className="route-dash" /><circle r="3" fill="#67e8f9" className="route-ping"><animateMotion dur={`${2.4 + index * .4}s`} repeatCount="indefinite" path={`M ${point.x} ${point.y} Q ${(point.x + next.x) / 2} ${point.y - 34} ${next.x} ${next.y}`} /></circle></g>;
+          return <g key={`${point.name}-route`}><path d={`M ${point.x} ${point.y} Q ${(point.x + next.x) / 2} ${point.y - 90} ${next.x} ${next.y}`} fill="none" stroke="url(#route-gradient)" strokeWidth="3" strokeDasharray="7 10" className="route-dash" /><circle r="4" fill="#67e8f9" className="route-ping"><animateMotion dur={`${2.4 + index * .4}s`} repeatCount="indefinite" path={`M ${point.x} ${point.y} Q ${(point.x + next.x) / 2} ${point.y - 90} ${next.x} ${next.y}`} /></circle></g>;
         })}
-        {points.map((point) => <g key={point.name} filter="url(#node-glow)"><circle cx={point.x} cy={point.y} r="22" fill={point.color} opacity=".08" className="node-breathe" /><circle cx={point.x} cy={point.y} r="12" fill="#101e31" stroke={point.color} strokeWidth="2" /><circle cx={point.x} cy={point.y} r="4" fill={point.color} /><text x={point.x} y={point.y + 34} textAnchor="middle" fill="#d7e6f7" fontSize="11" fontFamily="JetBrains Mono">{point.name}</text><text x={point.x} y={point.y + 49} textAnchor="middle" fill="#7187a2" fontSize="9">{point.utilization}% load</text></g>)}
+        {points.map((point) => <g key={point.name} filter="url(#node-glow)"><circle cx={point.x} cy={point.y} r="36" fill={point.color} opacity=".08" className="node-breathe" /><circle cx={point.x} cy={point.y} r="20" fill="#101e31" stroke={point.color} strokeWidth="2" /><circle cx={point.x} cy={point.y} r="7" fill={point.color} /><circle cx={point.x} cy={point.y} r="28" fill="none" stroke={point.color} strokeOpacity=".35" strokeDasharray="3 8" className="node-orbit" /><text x={point.x} y={point.y + 50} textAnchor="middle" fill="#e3effd" fontSize="14" fontWeight="600" fontFamily="JetBrains Mono">{point.name}</text><text x={point.x} y={point.y + 68} textAnchor="middle" fill="#7187a2" fontSize="11">{point.utilization}% capacity</text></g>)}
       </svg>
-      <div className="absolute bottom-3 left-4 right-4 flex items-center justify-between text-[10px] font-mono text-[#7187a2]"><span><span className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-cyan-300 shadow-[0_0_8px_#67e8f9]" />Live allocation layer</span><span>{rows.length} active nodes</span></div>
+      <div className="absolute bottom-4 left-5 right-5 flex items-center justify-between text-[10px] font-mono text-[#7187a2]"><span><span className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-cyan-300 shadow-[0_0_8px_#67e8f9]" />Allocation layer</span><span>{rows.length} active nodes / streaming</span></div>
     </div>
   );
 }
@@ -117,28 +121,30 @@ export function Dashboard({ onNavigate }: { onNavigate: (p: Page) => void }) {
     <div className="page-enter dashboard-shell h-full overflow-y-auto bg-transparent p-4 md:p-7 space-y-6">
       <section className="command-hero relative overflow-hidden rounded-[1.5rem] border border-cyan-300/20 bg-[#0c1726]/90 p-5 md:p-7 shadow-[0_30px_90px_rgba(3,12,28,.65)]">
         <div className="hero-orbit hero-orbit-one" /><div className="hero-orbit hero-orbit-two" /><div className="scanline" />
-        <div className="relative grid gap-6 xl:grid-cols-[1fr_1.15fr] xl:items-center">
+        <div className="relative flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <div className="mb-3 flex items-center gap-2 text-[10px] font-mono uppercase tracking-[0.23em] text-cyan-300"><span className="live-dot" />Command center / live</div>
+            <div className="mb-3 flex items-center gap-2 text-[10px] font-mono uppercase tracking-[0.23em] text-cyan-300"><span className="live-dot" />Command center / live network</div>
             <h1 className="max-w-xl text-3xl font-semibold leading-tight tracking-[-0.04em] text-white md:text-5xl">See the network.<br /><span className="holographic-text">Move the future.</span></h1>
-            <p className="mt-4 max-w-lg text-sm leading-6 text-[#9bb0c9]">Monitor capacity, cost, and allocation in one living view of your logistics network.</p>
-            <div className="mt-6 flex flex-wrap items-center gap-2">
-              <Badge variant={health?.llm?.startsWith('on:') ? 'success' : 'muted'}><Activity size={11} />{health?.llm || 'Syncing telemetry'}</Badge>
-              <Badge variant="info"><Cpu size={11} />Exact solver</Badge>
-              <Button variant="primary" size="sm" loading={loading} onClick={runDemo}><RefreshCw size={13} />Re-optimize</Button>
-            </div>
-            <div className="mt-7 grid max-w-md grid-cols-3 gap-3 border-t border-white/10 pt-4">
-              <div><div className="text-lg font-mono font-bold text-white">{lastRun ? `${lastRun.savingsPct?.toFixed(1) || '—'}%` : '—'}</div><div className="text-[10px] uppercase tracking-wider text-[#6f87a3]">savings</div></div>
-              <div><div className="text-lg font-mono font-bold text-white">{lastRun?.unserved?.length ? lastRun.unserved.length : '0'}</div><div className="text-[10px] uppercase tracking-wider text-[#6f87a3]">unserved</div></div>
-              <div><div className="text-lg font-mono font-bold text-white">{lastRun?.runtimeMs || '—'}<span className="text-xs font-normal text-cyan-300">ms</span></div><div className="text-[10px] uppercase tracking-wider text-[#6f87a3]">solver time</div></div>
-            </div>
+            <p className="mt-3 max-w-lg text-sm leading-6 text-[#9bb0c9]">A live operational view of capacity, cost, and allocation across your warehouse network.</p>
           </div>
-          <NetworkPulse rows={whRows} />
+          <div className="flex shrink-0 flex-wrap items-center gap-2 rounded-xl border border-white/10 bg-black/15 p-2 backdrop-blur-md">
+            <Badge variant={health?.llm?.startsWith('on:') ? 'success' : 'muted'}><Activity size={11} />{health?.llm || 'Syncing telemetry'}</Badge>
+            <Badge variant="info"><Cpu size={11} />Exact solver</Badge>
+            <Button variant="primary" size="sm" loading={loading} onClick={runDemo}><RefreshCw size={13} />Re-optimize</Button>
+          </div>
         </div>
       </section>
 
+      <section className="network-hero-panel rounded-[1.5rem] border border-cyan-300/15 bg-[#0a1421]/88 p-3 shadow-[0_26px_80px_rgba(2,13,28,.45)] md:p-4">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3 px-2">
+          <div><div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-[0.2em] text-cyan-300"><Sparkles size={12} /> Optimization field</div><div className="mt-1 text-sm text-[#a8bdd4]">Warehouses connected by active allocation routes</div></div>
+          <div className="flex items-center gap-4 text-[10px] font-mono text-[#7187a2]"><span><i className="legend-dot legend-cyan" />active flow</span><span><i className="legend-dot legend-blue" />capacity signal</span></div>
+        </div>
+        <NetworkPulse rows={whRows} />
+      </section>
+
       {lastRun && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {[
             { label: 'Total Cost', value: fmtCurrency(lastRun.totalCost), delta: lastRun.savingsPct != null ? (lastRun.savingsPct > 0 ? `-${lastRun.savingsPct.toFixed(1)}%` : `+${Math.abs(lastRun.savingsPct).toFixed(1)}%`) : '—', positive: lastRun.savingsPct != null && lastRun.savingsPct >= 0, icon: TrendingDown, color: 'text-emerald-400', bg: 'bg-emerald-500/8' },
             { label: 'Delivery Cost', value: fmtCurrency(lastRun.deliveryCost), delta: '?', positive: null, icon: Package, color: 'text-blue-400', bg: 'bg-blue-500/8' },
@@ -151,12 +157,15 @@ export function Dashboard({ onNavigate }: { onNavigate: (p: Page) => void }) {
                 <div className="flex items-start justify-between">
                   <div>
                     <div className="flex items-center gap-2 text-xs text-[#7187a2] font-mono mb-1"><span className="h-1 w-1 rounded-full bg-current" />{k.label}</div>
-                    <div className="text-2xl font-mono font-bold tracking-tight text-white">{k.value}</div>
-                    <div className="flex items-center gap-1 mt-1">
+                    <div className="kpi-value text-3xl font-mono font-bold tracking-tight text-white">{k.value}</div>
+                     <div className="flex items-center gap-1 mt-1">
                       <span className={`text-[10px] font-mono ${k.positive === null ? 'text-[#4a4a60]' : k.positive ? 'text-emerald-400' : 'text-red-400'}`}>{k.delta}</span>
                       {k.positive === true && <TrendingDown size={10} className="text-emerald-400" />}
                       {k.positive === false && <TrendingUp size={10} className="text-red-400" />}
-                    </div>
+                   </div>
+                  <div className="kpi-visual absolute bottom-0 left-5 right-5 flex h-7 items-end gap-1 opacity-60">
+                    {[.35, .55, .42, .7, .62, .86, k.positive === true ? .98 : .72].map((height, barIndex) => <span key={barIndex} style={{ height: `${Math.round(height * (k.positive === null ? 76 : 100))}%`, animationDelay: `${barIndex * 70}ms` }} />)}
+                  </div>
                   </div>
                    <div className={`kpi-icon w-10 h-10 rounded-xl ${k.bg} flex items-center justify-center`}>
                     <k.icon size={14} className={k.color} />

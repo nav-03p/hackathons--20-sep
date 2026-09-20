@@ -174,6 +174,15 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   to { stroke-dashoffset: -26; }
 }
 
+@keyframes ring-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes bar-rise {
+  from { transform: scaleY(.18); opacity: .25; }
+  to { transform: scaleY(1); opacity: 1; }
+}
+
 .page-enter { animation: rise-in 420ms ease-out both; }
 .status-live { animation: pulse-glow 2.5s ease-in-out infinite; }
 
@@ -193,11 +202,24 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .network-grid { background-image: linear-gradient(rgba(88, 123, 158, .08) 1px, transparent 1px), linear-gradient(90deg, rgba(88, 123, 158, .08) 1px, transparent 1px); background-size: 24px 24px; }
 .route-dash { animation: route-flow 2.5s linear infinite; }
 .node-breathe { transform-box: fill-box; transform-origin: center; animation: node-breathe 3s ease-in-out infinite; }
+.node-orbit { transform-box: fill-box; transform-origin: center; animation: ring-spin 9s linear infinite; }
+.network-ring { transform-box: fill-box; transform-origin: center; animation: ring-spin 24s linear infinite; }
+.network-ring-slow { animation-duration: 36s; animation-direction: reverse; }
+.network-pulse-ring { display: inline-block; width: .5rem; height: .5rem; border-radius: 999px; background: #67e8f9; box-shadow: 0 0 0 4px rgba(103, 232, 249, .12), 0 0 14px #67e8f9; animation: pulse-glow 2s infinite; }
+.network-hero-panel { background-image: radial-gradient(circle at 50% 10%, rgba(34, 211, 238, .06), transparent 32rem); }
+.legend-dot { display: inline-block; width: .45rem; height: .45rem; border-radius: 999px; margin-right: .4rem; }
+.legend-cyan { background: #67e8f9; box-shadow: 0 0 8px #67e8f9; }
+.legend-blue { background: #60a5fa; box-shadow: 0 0 8px #60a5fa; }
 .kpi-card { position: relative; overflow: hidden; }
 .kpi-card::after { content: ''; position: absolute; inset: auto 0 0; height: 2px; background: linear-gradient(90deg, transparent, rgba(103, 232, 249, .7), transparent); transform: scaleX(.35); transition: transform 350ms ease; }
 .kpi-card:hover::after { transform: scaleX(1); }
 .kpi-card:hover .kpi-icon { transform: rotate(-6deg) scale(1.08); }
 .kpi-icon { transition: transform 250ms ease; }
+.kpi-value { animation: rise-in 600ms cubic-bezier(.2,.8,.2,1) both; }
+.kpi-visual span { flex: 1; min-width: 3px; transform-origin: bottom; border-radius: 999px 999px 0 0; background: linear-gradient(to top, rgba(34, 211, 238, .12), rgba(103, 232, 249, .9)); animation: bar-rise 900ms cubic-bezier(.2,.8,.2,1) both; }
+.kpi-card-1 .kpi-visual span { background: linear-gradient(to top, rgba(96, 165, 250, .12), rgba(96, 165, 250, .9)); }
+.kpi-card-2 .kpi-visual span { background: linear-gradient(to top, rgba(167, 139, 250, .12), rgba(167, 139, 250, .9)); }
+.kpi-card-3 .kpi-visual span { background: linear-gradient(to top, rgba(251, 191, 36, .12), rgba(251, 191, 36, .9)); }
 .chart-card { background: linear-gradient(145deg, rgba(16, 28, 43, .92), rgba(11, 18, 29, .88)); }
 
 @media (prefers-reduced-motion: reduce) {
