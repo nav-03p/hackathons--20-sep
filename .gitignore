@@ -29,3 +29,5 @@ cpp/wlopt.exe
 .claude/
 .claude*
 
+.ideavo/project
+*.log
