@@ -261,8 +261,9 @@ export function OptimizationWorkspace() {
         <div className="optimization-heading px-6 py-5 border-b border-[#1e1e2e]">
           <div className="flex items-center justify-between">
             <div><h1 className="text-2xl md:text-3xl font-semibold tracking-tight text-white">Optimization Workspace</h1><p className="mt-1 text-sm text-[#7f96af]">Design the most efficient warehouse network.</p></div>
-            <div className="flex items-center gap-3"><div className="optimization-metrics hidden sm:grid grid-cols-3 gap-3"><div><strong>{scaledNb.length}</strong><span>demand nodes</span></div><div><strong>{wh.length}</strong><span>candidate hubs</span></div><div><strong>{result?.runtimeMs ?? '—'}</strong><span>solve ms</span></div></div><Button variant="primary" size="md" loading={running} onClick={run} className="shadow-lg shadow-blue-500/20"><Play size={14} />Run Optimization</Button></div>
-          </div>
+            <Button variant="primary" size="md" loading={running} onClick={run} className="shadow-lg shadow-blue-500/20"><Play size={14} />Run Optimization</Button>
+           </div>
+          <div className="optimization-metrics-row mt-5 grid grid-cols-3 gap-3 max-w-lg"><div><strong>{scaledNb.length}</strong><span>Demand Nodes</span></div><div><strong>{wh.length}</strong><span>Candidate Hubs</span></div><div><strong>{result?.runtimeMs ?? '—'}</strong><span>Solve Time</span></div></div>
         </div>
 
         <div className="optimization-controlbar px-6 py-4 space-y-4">
@@ -465,32 +466,6 @@ export function OptimizationWorkspace() {
             </div>
           </details>
 
-          {/* Secondary analysis actions */}
-          <div className="optimization-secondary-actions pt-3 border-t border-[#1e1e2e] space-y-2">
-            <div className="grid grid-cols-2 gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                loading={sweepLoading}
-                onClick={runSweep}
-                className="text-[11px] flex items-center justify-center gap-1"
-                title="Sweep k=1..N to find optimal infrastructure vs delivery trade-off curve"
-              >
-                <BarChart3 size={13} />
-                k-Sweep Curve
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={runWeiszfeld}
-                className="text-[11px] flex items-center justify-center gap-1"
-                title="Find continuous demand-weighted geometric median center"
-              >
-                <Compass size={13} />
-                Weiszfeld (k=1)
-              </Button>
-            </div>
-          </div>
         </div>
       </div>
 
@@ -981,6 +956,11 @@ export function OptimizationWorkspace() {
             </div>
           )}
         </div>
+      </div>
+      <div className="optimization-tools-row flex items-center justify-end gap-2 px-6 py-2 border-t border-[#1e1e2e] bg-[#0b1420]">
+        <span className="mr-2 text-[10px] font-mono uppercase tracking-wider text-[#617892]">Secondary tools</span>
+        <Button variant="outline" size="sm" loading={sweepLoading} onClick={runSweep} className="text-[11px] flex items-center gap-1" title="Sweep k=1..N to find optimal infrastructure vs delivery trade-off curve"><BarChart3 size={13} />k-Sweep Curve</Button>
+        <Button variant="outline" size="sm" onClick={runWeiszfeld} className="text-[11px] flex items-center gap-1" title="Find continuous demand-weighted geometric median center"><Compass size={13} />Weiszfeld (k=1)</Button>
       </div>
     </div>
   );
