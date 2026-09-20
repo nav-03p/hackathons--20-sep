@@ -82,11 +82,15 @@ export function Dashboard({ onNavigate }: { onNavigate: (p: Page) => void }) {
   ) : [];
 
   return (
-    <div className="h-full overflow-y-auto bg-[#0a0a0f] p-6 space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="page-enter h-full overflow-y-auto bg-transparent p-5 md:p-8 space-y-6">
+      <div className="relative overflow-hidden rounded-2xl border border-blue-400/15 bg-gradient-to-br from-[#142238] via-[#101a29] to-[#0d141e] p-6 md:p-7 shadow-2xl shadow-blue-950/20">
+        <div className="absolute -right-20 -top-24 h-64 w-64 rounded-full bg-cyan-400/10 blur-3xl" />
+        <div className="absolute right-10 bottom-0 h-32 w-32 rounded-full bg-blue-500/10 blur-2xl" />
+        <div className="relative flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-lg font-semibold text-white">Overview</h1>
-          <p className="text-xs text-[#4a4a60] mt-0.5">Live optimization · {health ? health.db : 'starting...'}</p>
+          <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-[0.2em] text-cyan-300/80 mb-2"><span className="h-1.5 w-1.5 rounded-full bg-cyan-300 shadow-[0_0_10px_#67e8f9]" />Live network pulse</div>
+          <h1 className="text-2xl md:text-3xl font-semibold tracking-tight text-white">Good morning, Alex.</h1>
+          <p className="text-sm text-[#8ca0b8] mt-1">Your network is balanced and ready for the next optimization run.</p>
         </div>
         <div className="flex items-center gap-2">
           <Badge variant={health?.llm?.startsWith('on:') ? 'success' : 'muted'}>
@@ -95,6 +99,7 @@ export function Dashboard({ onNavigate }: { onNavigate: (p: Page) => void }) {
           <Button variant="primary" size="sm" loading={loading} onClick={runDemo}>
             <RefreshCw size={13} />Re-optimize
           </Button>
+        </div>
         </div>
       </div>
 
@@ -106,12 +111,13 @@ export function Dashboard({ onNavigate }: { onNavigate: (p: Page) => void }) {
             { label: 'Avg Distance', value: `${lastRun.avgDistance.toFixed(1)} km`, delta: 'per delivery', positive: null, icon: MapPin, color: 'text-purple-400', bg: 'bg-purple-500/8' },
             { label: 'Warehouses', value: String(lastRun.openWarehouses.length), delta: lastRun.baselineSingle ? `vs ${lastRun.baselineSingle.open.length} base` : 'candidates', positive: null, icon: Zap, color: 'text-amber-400', bg: 'bg-amber-500/8' },
           ].map((k, i) => (
-            <Card key={i}>
-              <CardBody className="pt-5">
+            <Card key={i} className="group overflow-hidden">
+              <CardBody className="pt-5 relative">
+                <div className="absolute -right-5 -top-8 h-20 w-20 rounded-full bg-blue-500/5 blur-xl transition-all group-hover:bg-blue-400/10" />
                 <div className="flex items-start justify-between">
                   <div>
                     <div className="text-xs text-[#4a4a60] font-mono mb-1">{k.label}</div>
-                    <div className="text-xl font-mono font-bold text-white">{k.value}</div>
+                    <div className="text-2xl font-mono font-bold tracking-tight text-white">{k.value}</div>
                     <div className="flex items-center gap-1 mt-1">
                       <span className={`text-[10px] font-mono ${k.positive === null ? 'text-[#4a4a60]' : k.positive ? 'text-emerald-400' : 'text-red-400'}`}>{k.delta}</span>
                       {k.positive === true && <TrendingDown size={10} className="text-emerald-400" />}
@@ -131,9 +137,9 @@ export function Dashboard({ onNavigate }: { onNavigate: (p: Page) => void }) {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Cost breakdown */}
         <Card className="lg:col-span-2">
-          <CardHeader><span className="text-sm font-medium text-white">Cost Breakdown</span></CardHeader>
+           <CardHeader><div><span className="text-sm font-medium text-white">Cost Breakdown</span><div className="text-[11px] text-[#60728a] mt-1">Where every dollar is moving</div></div></CardHeader>
           <CardBody>
-            <div className="h-48">
+             <div className="h-48 relative">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie data={costBreakdown} cx="50%" cy="50%" innerRadius={48} outerRadius={72} paddingAngle={4} dataKey="value">
@@ -143,7 +149,7 @@ export function Dashboard({ onNavigate }: { onNavigate: (p: Page) => void }) {
                 </PieChart>
               </ResponsiveContainer>
             </div>
-            <div className="flex gap-4 mt-2 text-xs">
+             <div className="flex flex-wrap gap-4 mt-2 text-xs">
               {costBreakdown.map((c, i) => (
                 <div key={i} className="flex items-center gap-2">
                   <div className="w-2.5 h-2.5 rounded-full" style={{ background: COLORS[i] }} />
@@ -157,15 +163,15 @@ export function Dashboard({ onNavigate }: { onNavigate: (p: Page) => void }) {
 
         {/* Utilization */}
         <Card>
-          <CardHeader><span className="text-sm font-medium text-white">Warehouse Utilization</span></CardHeader>
+           <CardHeader><div><span className="text-sm font-medium text-white">Warehouse Utilization</span><div className="text-[11px] text-[#60728a] mt-1">Capacity across active hubs</div></div></CardHeader>
           <CardBody>
             <div className="space-y-3">
               {whRows.map((w, i) => (
                 <div key={i} className="flex items-center gap-3">
                   <div className="w-2 h-2 rounded-full" style={{ background: w.color }} />
                   <div className="w-16 text-xs text-[#8080a0]">{w.name}</div>
-                  <div className="flex-1 h-1.5 bg-[#1a1a24] rounded-full overflow-hidden">
-                    <div className="h-full rounded-full transition-all" style={{ width: `${w.utilization}%`, background: w.utilization > 90 ? '#ef4444' : w.utilization > 75 ? '#f59e0b' : w.color }} />
+                   <div className="flex-1 h-2 bg-[#182130] rounded-full overflow-hidden">
+                     <div className="h-full rounded-full transition-all duration-700 shadow-[0_0_10px_currentColor]" style={{ width: `${w.utilization}%`, background: w.utilization > 90 ? '#ef4444' : w.utilization > 75 ? '#f59e0b' : w.color, color: w.color }} />
                   </div>
                   <div className="w-10 text-right font-mono text-xs text-[#c0c0d0]">{w.utilization}%</div>
                 </div>
@@ -181,7 +187,7 @@ export function Dashboard({ onNavigate }: { onNavigate: (p: Page) => void }) {
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-white">Last Optimization</span>
+               <div><span className="text-sm font-medium text-white">Last Optimization</span><div className="text-[11px] text-[#60728a] mt-1">Latest solver telemetry</div></div>
               <Button variant="ghost" size="sm" onClick={() => onNavigate('history')}>View history</Button>
             </div>
           </CardHeader>
@@ -206,12 +212,12 @@ export function Dashboard({ onNavigate }: { onNavigate: (p: Page) => void }) {
         </Card>
 
         <Card>
-          <CardHeader><span className="text-sm font-medium text-white">Why This Solution?</span></CardHeader>
+           <CardHeader><div><span className="text-sm font-medium text-white">Why This Solution?</span><div className="text-[11px] text-[#60728a] mt-1">A human-readable decision trace</div></div></CardHeader>
           <CardBody>
             {lastRun?.explanation ? (
               <ul className="space-y-2 text-xs text-[#8080a0]">
                 {lastRun.explanation.map((e, i) => (
-                  <li key={i} className="flex gap-2"><span className="text-blue-400">•</span>{e}</li>
+                  <li key={i} className="flex gap-3 rounded-lg border border-[#223044] bg-[#0d141e]/70 p-3"><span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-blue-400/15 text-[10px] text-cyan-300">{i + 1}</span>{e}</li>
                 ))}
               </ul>
             ) : <div className="text-xs text-[#3a3a50]">Run with explain=true to see reasoning</div>}

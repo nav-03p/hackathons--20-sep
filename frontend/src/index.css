@@ -24,21 +24,21 @@
 }
 
 :root {
-  --background: #0a0a0f;
+  --background: #080b12;
   --foreground: #e8e8ed;
-  --card: #111118;
+  --card: #101620;
   --card-foreground: #e8e8ed;
   --primary: #3b82f6;
   --primary-foreground: #ffffff;
-  --secondary: #1a1a24;
+  --secondary: #182130;
   --secondary-foreground: #a0a0b0;
-  --muted: #16161f;
+  --muted: #111923;
   --muted-foreground: #6b6b80;
   --accent: #3b82f6;
   --accent-foreground: #ffffff;
-  --border: #1e1e2e;
+  --border: #223044;
   --ring: #3b82f6;
-  --radius: 6px;
+  --radius: 10px;
 }
 
 :root.light, html.light, [data-theme="light"] {
@@ -123,6 +123,36 @@ html, body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+body {
+  background-image:
+    radial-gradient(circle at 15% -10%, rgba(37, 99, 235, 0.14), transparent 34rem),
+    radial-gradient(circle at 95% 10%, rgba(14, 165, 233, 0.07), transparent 28rem),
+    linear-gradient(135deg, #080b12 0%, #0b1019 48%, #080b12 100%);
+}
+
+button, a, input, select, textarea {
+  transition: color 180ms ease, background-color 180ms ease, border-color 180ms ease,
+    box-shadow 180ms ease, transform 180ms ease, opacity 180ms ease;
+}
+
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 2px solid rgba(56, 189, 248, 0.75);
+  outline-offset: 2px;
+}
+
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.22); }
+  50% { box-shadow: 0 0 0 5px rgba(34, 197, 94, 0); }
+}
+
+.page-enter { animation: rise-in 420ms ease-out both; }
+.status-live { animation: pulse-glow 2.5s ease-in-out infinite; }
+
 /* Readability baseline: the first version used compact 9–12px dashboard
    typography. These overrides keep the information density but make every
    existing page comfortable to read on normal laptop screens. */
@@ -171,6 +201,8 @@ input::placeholder, textarea::placeholder {
   background: #0d0d18 !important;
   font-family: 'DM Sans', sans-serif !important;
 }
+
+html:not(.light) .bg-\[\#0a0a0f\] { background-color: transparent; }
 
 html.light .leaflet-container {
   background: #f1f5f9 !important;
