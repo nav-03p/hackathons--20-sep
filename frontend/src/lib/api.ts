@@ -34,6 +34,8 @@ export const api = {
     post<{ sweep: { k: number; deliveryCost: number; fixedCost: number; infraCost: number; totalCost: number; openWarehouses: string[]; unserved: number; algorithmUsed: string; error?: string }[]; note: string }>('/api/sweep', body),
   compare: (body: CompareBody) => post<CompareResult>('/api/compare', body),
   simulate: (body: SimBody) => post<SimResult>('/api/simulate', body),
+  expansion: (body: { neighborhoods: Point[]; candidates: Candidate[]; params?: Params; expansion?: { growthPct?: number; utilThreshold?: number; newFixedCost?: number; buffer?: number } }) =>
+    post<ExpansionResult>('/api/expansion', body),
   sensitivity: (body: SensBody) => post<SensResult>('/api/sensitivity', body),
   median: (body: MedBody) => post<MedResult>('/api/median', body),
   explain: (body: OptBody) => post<OptResult & { explanation?: string[] }>('/api/explain', body),
@@ -141,6 +143,24 @@ export interface SimResult {
 }
 
 export interface SensBody { neighborhoods: Point[]; candidates: Candidate[]; params?: Params; }
+
+// ---- Expansion advisor (demand-growth what-if on the optimization page) ----
+export interface ExpansionAction {
+  id: string; name?: string; utilBefore: number;
+  capacityFrom: number; capacityTo: number; addUnits: number;
+}
+export interface ExpansionProposal {
+  id: string; name?: string; x: number; y: number;
+  capacity: number; fixedCost: number; catchment?: number; note?: string;
+}
+export interface ExpansionResult {
+  growthPct: number; utilThreshold: number; grownDemandTotal: number;
+  base: { openWarehouses: string[]; utilization: { id: string; u: number }[]; unserved: string[]; totalCost: number; maxUtil: number; };
+  expansions: ExpansionAction[]; proposal: ExpansionProposal | null;
+  final: { openWarehouses: string[]; utilization: { id: string; u: number }[]; unserved: string[]; totalCost: number; maxUtil: number; assignments?: Record<string, string> | { neighborhoodId: string; warehouseId: string }[]; };
+  savings: { savedPerPeriod: number; unmetBefore: number; unmetAfter: number; unservedBefore: number; unservedAfter: number; paybackDays: number | null };
+  summary?: string[]; narrVia?: string;
+}
 
 export interface SensRow {
   algo: string;

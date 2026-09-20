@@ -123,6 +123,7 @@ const BENGALURU_DATA={ neighborhoods, candidates,
     note:'Real neighborhood lat/lng mapped to normalized 0-100 grid. Schema is city-agnostic.' }};
 
 const year = require('./yearsim.js');
+const expansion = require('./expansion.js');
 const shared = require('./shared.js');
 const envdb = require('./envdb.js');
 const fulfill = require('./fulfill.js');
@@ -233,6 +234,13 @@ const server = http.createServer(function(req,res){
       }
       const payload=Object.assign({}, b, {mode: b.mode||modes[u.pathname]});
       const out=runWlopt(payload);
+      // normalize solver assignments array -> {neighborhoodId: warehouseId} map
+      // (frontend maps expect a record; also fixes SVG assignment lines)
+      const toMap=function(arr){ return arr.reduce(function(m,a){
+        m[a.neighborhoodId]=a.warehouseId; return m; },{}); };
+      if(Array.isArray(out.assignments)) out.assignments=toMap(out.assignments);
+      if(u.pathname==='/api/compare'&&Array.isArray(out.results))
+        out.results.forEach(function(r){ if(Array.isArray(r.assignments)) r.assignments=toMap(r.assignments); });
             if(u.pathname==='/api/explain') out.explanation=explain(out,b);
             if(u.pathname==='/api/optimize'){
         if(b.explain) out.explanation=explain(out,b);
@@ -302,6 +310,32 @@ const server = http.createServer(function(req,res){
       year.llmNarrate(payload, function(err, out){
         if(err){ send(res,500,{error:String(err)}); return; }
         send(res,200,out);
+      });
+      return;
+    }
+    if(req.method==='POST' && u.pathname==='/api/expansion'){
+      // Expansion advisor: given a demand-growth %, recommend which existing
+      // warehouses to expand and by how much, whether/where to open a new
+      // warehouse, re-optimize the network, and narrate it via LLM.
+      const b=JSON.parse(await readBody(req)||'{}');
+      if(!b.neighborhoods||!b.candidates){
+        send(res,400,{error:'neighborhoods + candidates required'}); return;
+      }
+      const P=Object.assign({deliveryCostPerKm:2,maxServiceRadius:60,
+        minWarehouses:1,maxWarehouses:4,distanceMetric:'euclidean',
+        roadFactor:1.35,algorithm:'localsearch',randomSeed:42,
+        saIterations:3000}, b.params||{});
+      const X=Object.assign({growthPct:25,utilThreshold:0.85,
+        newFixedCost:1500,buffer:1.2}, b.expansion||{});
+      let o;
+      try{ o=expansion.runExpansion(b.neighborhoods,b.candidates,P,X,runWlopt); }
+      catch(e){ send(res,500,{error:String(e.message||e).slice(0,300)}); return; }
+      o.params=P;
+      expansion.llmSummarize(o, function(err, out){
+        o.summary=(out&&out.text)?out.text.split(/\n+/).filter(Boolean)
+          :expansion.templateSummary(o);
+        o.narrVia=(out&&out.via)||'template';
+        send(res,200,o);
       });
       return;
     }

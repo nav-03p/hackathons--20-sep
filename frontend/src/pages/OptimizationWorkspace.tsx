@@ -10,7 +10,7 @@ import {
   Maximize2, ArrowRight, ShieldAlert, Sparkles, MapPin
 } from 'lucide-react';
 import { useStore } from '@/lib/store';
-import { api, type Params, type OptResult, type Point, type Candidate } from '@/lib/api';
+import { api, type Params, type OptResult, type Point, type Candidate, type ExpansionResult } from '@/lib/api';
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip,
   Legend, CartesianGrid, ResponsiveContainer, ReferenceLine
@@ -87,7 +87,7 @@ export function OptimizationWorkspace() {
   const [demandGrowthPct, setDemandGrowthPct] = useState<number>(0);
 
   // Active view tab
-  const [activeTab, setActiveTab] = useState<'map' | 'baseline' | 'sweep' | 'median'>('map');
+  const [activeTab, setActiveTab] = useState<'map' | 'baseline' | 'sweep' | 'median' | 'expand'>('map');
 
   // Execution state
   const [running, setRunning] = useState(false);
@@ -216,6 +216,37 @@ export function OptimizationWorkspace() {
       setErr(e.message || 'Weiszfeld computation failed');
     }
   }, [loaded, scaledNb]);
+
+  // Expansion advisor state
+  const [expGrowth, setExpGrowth] = useState(30);
+  const [expThr, setExpThr] = useState(85);
+  const [expRunning, setExpRunning] = useState(false);
+  const [expRan, setExpRan] = useState(false);
+  const [expRes, setExpRes] = useState<ExpansionResult | null>(null);
+
+  // Expansion advisor runner: growth what-if -> expand/locate plan + LLM summary
+  const runExpansion = useCallback(async () => {
+    if (!loaded || !scaledNb.length || !wh.length) return;
+    setExpRunning(true); setErr(null);
+    try {
+      const out = await api.expansion({
+        neighborhoods: scaledNb,
+        candidates: wh,
+        params: {
+          algorithm: algo === 'median' ? 'localsearch' : algo,
+          distanceMetric: dist,
+          maxServiceRadius: radius,
+          deliveryCostPerKm: effectiveCostPerKm,
+          roadFactor: (dist === 'road' ? 1.35 : 1.0) * currentTraffic.roadMultiplier,
+          capacity, fixedCost, minWarehouses: minW, maxWarehouses: maxW,
+        },
+        expansion: { growthPct: expGrowth, utilThreshold: expThr / 100, newFixedCost: fixedCost },
+      });
+      setExpRes(out); setExpRan(true);
+    } catch (e: any) {
+      setErr(e.message || 'Expansion analysis failed');
+    } finally { setExpRunning(false); }
+  }, [loaded, scaledNb, wh, algo, dist, radius, effectiveCostPerKm, currentTraffic, capacity, fixedCost, minW, maxW, expGrowth, expThr]);
 
   const whList = result?.utilization?.map(u => {
     const w = wh.find(x => x.id === u.id);
@@ -525,6 +556,16 @@ export function OptimizationWorkspace() {
               }`}
             >
               <Compass size={13} /> Weiszfeld Geometric Center
+            </button>
+            <button
+              onClick={() => setActiveTab('expand')}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors ${
+                activeTab === 'expand'
+                  ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30'
+                  : 'text-[#8080a0] hover:text-white hover:bg-[#1a1a24]'
+              }`}
+            >
+              <TrendingUp size={13} /> Expansion Advisor
             </button>
           </div>
 
@@ -868,6 +909,143 @@ export function OptimizationWorkspace() {
               </Card>
             </div>
           )}
+          {/* TAB 5: Expansion Advisor */}
+          {activeTab === 'expand' && (
+            <div className="grid grid-cols-1 xl:grid-cols-4 gap-4">
+              <div className="space-y-4">
+                <Card>
+                  <CardHeader><span className="text-sm font-medium text-white">Demand Growth What-If</span></CardHeader>
+                  <CardBody className="space-y-4">
+                    <div>
+                      <div className="flex justify-between text-xs text-[#5a5a70] mb-1">
+                        <span>Demand surge</span>
+                        <span className="font-mono text-white">+{expGrowth}%</span>
+                      </div>
+                      <input type="range" min={5} max={150} step={5} value={expGrowth}
+                        onChange={e => setExpGrowth(+e.target.value)}
+                        className="w-full h-1 accent-blue-500 cursor-pointer" />
+                    </div>
+                    <div>
+                      <div className="flex justify-between text-xs text-[#5a5a70] mb-1">
+                        <span>Utilization threshold</span>
+                        <span className="font-mono text-white">{expThr}%</span>
+                      </div>
+                      <input type="range" min={60} max={98} step={1} value={expThr}
+                        onChange={e => setExpThr(+e.target.value)}
+                        className="w-full h-1 accent-blue-500 cursor-pointer" />
+                    </div>
+                    <Button variant="primary" size="sm" className="w-full" loading={expRunning} onClick={runExpansion}>
+                      {expRunning ? <><Loader2 size={13} className="animate-spin" /> Analyzing…</> : <><TrendingUp size={13} /> Recommend Expansion Plan</>}
+                    </Button>
+                    {expRes && (
+                      <div className="pt-2 border-t border-[#1e1e2e] space-y-1.5 text-xs">
+                        <div className="flex justify-between"><span className="text-[#5a5a70]">Grown demand</span><span className="font-mono text-white">{expRes.grownDemandTotal}/day</span></div>
+                        <div className="flex justify-between"><span className="text-[#5a5a70]">Peak utilization</span><span className="font-mono"><span className="text-red-400">{Math.round(expRes.base.maxUtil * 100)}%</span> → <span className="text-emerald-400">{Math.round(expRes.final.maxUtil * 100)}%</span></span></div>
+                        <div className="flex justify-between"><span className="text-[#5a5a70]">Unserved areas</span><span className="font-mono"><span className="text-red-400">{expRes.savings.unservedBefore}</span> → <span className="text-emerald-400">{expRes.savings.unservedAfter}</span></span></div>
+                        <div className="flex justify-between"><span className="text-[#5a5a70]">Delivery cost</span><span className="font-mono text-white">{fmtCurrency(expRes.base.totalCost)} → {fmtCurrency(expRes.final.totalCost)}</span></div>
+                      </div>
+                    )}
+                  </CardBody>
+                </Card>
+
+                {expRes && (expRes.expansions.length > 0 || expRes.proposal) && (
+                  <Card>
+                    <CardHeader><span className="text-xs font-semibold text-white uppercase tracking-wider font-mono">Recommended Actions</span></CardHeader>
+                    <CardBody className="space-y-3">
+                      {expRes.expansions.map(e => (
+                        <div key={e.id} className="p-2.5 rounded-lg bg-amber-500/5 border border-amber-500/20">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="font-medium text-amber-300 flex items-center gap-1.5"><ArrowRight size={12} /> Expand {e.name}</span>
+                            <span className="font-mono text-amber-300">+{e.addUnits} units</span>
+                          </div>
+                          <div className="text-[10px] text-[#8080a0] mt-1 font-mono">
+                            capacity {e.capacityFrom} → {e.capacityTo} · was {Math.round(e.utilBefore * 100)}% full
+                          </div>
+                        </div>
+                      ))}
+                      {expRes.proposal && (
+                        <div className="p-2.5 rounded-lg bg-violet-500/5 border border-violet-500/20">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="font-medium text-violet-300 flex items-center gap-1.5"><MapPin size={12} /> Open {expRes.proposal.id}</span>
+                            <span className="font-mono text-violet-300">cap {expRes.proposal.capacity}</span>
+                          </div>
+                          <div className="text-[10px] text-[#8080a0] mt-1 font-mono">
+                            @ ({expRes.proposal.x}, {expRes.proposal.y}) · setup {fmtCurrency(expRes.proposal.fixedCost)} · covers {expRes.proposal.catchment} stressed areas
+                          </div>
+                          {expRes.savings.paybackDays != null && (
+                            <div className="text-[10px] text-emerald-400 mt-1">Payback ~{expRes.savings.paybackDays} days</div>
+                          )}
+                        </div>
+                      )}
+                      {!expRes.proposal && expRes.expansions.length === 0 && (
+                        <div className="text-xs text-emerald-400 flex items-center gap-1.5"><CheckCircle2 size={13} /> No expansion needed at this growth level.</div>
+                      )}
+                    </CardBody>
+                  </Card>
+                )}
+              </div>
+
+              {/* Map + LLM summary */}
+              <div className="xl:col-span-3 space-y-4">
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center justify-between w-full flex-wrap gap-2">
+                      <span className="text-sm font-medium text-white">Expansion Plan Map (+{expGrowth}% demand)</span>
+                      <div className="flex items-center gap-3 text-[10px] text-[#8080a0] font-mono">
+                        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full border-2 border-red-500 inline-block" /> Overloaded</span>
+                        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full border-2 border-amber-500 inline-block" /> Capacity Boost</span>
+                        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full border-2 border-violet-400 inline-block" /> New Warehouse</span>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardBody>
+                    <div className="h-[430px] rounded-lg border border-[#1e1e2e] bg-[#0d0f1a] overflow-hidden">
+                      <WloMapSVG
+                        neighborhoods={scaledNb}
+                        warehouses={wh}
+                        result={(expRes ? {
+                          openWarehouses: expRes.final.openWarehouses,
+                          utilization: expRes.final.utilization,
+                          unserved: expRes.final.unserved,
+                          assignments: expRes.final.assignments,
+                        } : result) as any}
+                        expansion={expRes as any}
+                        zoom={mapZoom}
+                        onSelect={setMapSelection}
+                      />
+                    </div>
+                  </CardBody>
+                </Card>
+
+                {expRes?.summary && (
+                  <Card>
+                    <CardHeader>
+                      <div className="flex items-center justify-between w-full">
+                        <span className="text-sm font-medium text-white flex items-center gap-1.5"><Sparkles size={14} className="text-violet-400" /> AI Executive Summary</span>
+                        <Badge variant={expRes.narrVia?.startsWith('llm') ? 'info' : 'muted'}>{expRes.narrVia}</Badge>
+                      </div>
+                    </CardHeader>
+                    <CardBody>
+                      <ul className="space-y-2">
+                        {expRes.summary.map((line, i) => (
+                          <li key={i} className="text-xs text-[#c0c0d0] leading-relaxed flex items-start gap-2">
+                            <span className="text-violet-400 font-bold mt-0.5">•</span>
+                            <span>{line}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </CardBody>
+                  </Card>
+                )}
+                {!expRan && !expRunning && (
+                  <div className="text-center py-10 text-[#6b6b80]">
+                    <TrendingUp size={26} className="mx-auto text-[#2a2a3a] mb-2" />
+                    <p className="text-xs">Set a demand surge and run the advisor to see which warehouses to expand,<br />where to open a new one, and an AI summary of the plan.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -881,15 +1059,18 @@ function WloMapSVG({
   result,
   zoom,
   onSelect,
+  expansion,
 }: {
   neighborhoods: (Point & { demand: number })[];
   warehouses: Candidate[];
   result?: OptResult | null;
   zoom: number;
   onSelect: (item: { kind: 'demand' | 'warehouse'; id: string; label: string; detail: string }) => void;
+  expansion?: any;
 }) {
   const xs = [...neighborhoods.map(n => n.x), ...warehouses.map(w => w.x)];
   const ys = [...neighborhoods.map(n => n.y), ...warehouses.map(w => w.y)];
+  if (expansion?.proposal) { xs.push(expansion.proposal.x); ys.push(expansion.proposal.y); }
 
   const minX = xs.length ? Math.min(...xs) - 0.005 : 12.9;
   const maxX = xs.length ? Math.max(...xs) + 0.005 : 13.0;
@@ -907,8 +1088,19 @@ function WloMapSVG({
 
   const safeZoom = Math.max(0.5, zoom || 1);
   const openIds = new Set(result?.openWarehouses || []);
-  const assigned = result?.assignments || {};
+  // assignments may arrive as {nid: wid} record or [{neighborhoodId, warehouseId}] array
+  const assignedRaw: any = result?.assignments || {};
+  const assigned: Record<string, string> = Array.isArray(assignedRaw)
+    ? Object.fromEntries(assignedRaw.map((a: any) => [a.neighborhoodId, a.warehouseId]))
+    : assignedRaw;
   const maxDemand = Math.max(...neighborhoods.map(n => n.demand), 1);
+
+  // expansion overlays: overloaded hubs, capacity boosts, proposed new site
+  const finalAsgRaw: any = expansion?.final?.assignments || {};
+  const finalAsg: Record<string, string> = Array.isArray(finalAsgRaw)
+    ? Object.fromEntries(finalAsgRaw.map((a: any) => [a.neighborhoodId, a.warehouseId]))
+    : finalAsgRaw;
+  const overloaded = (expansion?.base?.utilization || []).filter((u: any) => u.u >= (expansion?.utilThreshold ?? 0.85));
 
   return (
     <svg
@@ -1062,6 +1254,64 @@ function WloMapSVG({
           </g>
         );
       })}
+      {/* ---- Expansion Advisor Overlays ---- */}
+      {expansion && (
+        <>
+          {/* red ring: hubs overloaded at grown demand (before plan) */}
+          {overloaded.map((u: any) => {
+            const w = warehouses.find(x => x.id === u.id);
+            if (!w) return null;
+            return (
+              <circle key={`ovl-${u.id}`} cx={toX(w.x)} cy={toY(w.y)} r={22}
+                fill="#ef4444" fillOpacity="0.06" stroke="#ef4444" strokeWidth="2"
+                strokeDasharray="5 3" strokeOpacity="0.8" />
+            );
+          })}
+          {/* amber ring: capacity boost */}
+          {(expansion.expansions || []).map((e: any) => {
+            const w = warehouses.find(x => x.id === e.id);
+            if (!w) return null;
+            return (
+              <g key={`exp-${e.id}`}>
+                <circle cx={toX(w.x)} cy={toY(w.y)} r={26}
+                  fill="#f59e0b" fillOpacity="0.08" stroke="#f59e0b" strokeWidth="2" />
+                <text x={toX(w.x)} y={toY(w.y) - 30} textAnchor="middle" fontSize="11"
+                  fontWeight="bold" fill="#fbbf24" fontFamily="monospace">
+                  +{e.addUnits}
+                </text>
+              </g>
+            );
+          })}
+          {/* violet: proposed new warehouse + its catchment lines */}
+          {expansion.proposal && (() => {
+            const p = expansion.proposal;
+            return (
+              <g key="proposal">
+                {Object.entries(finalAsg).filter(([, wid]) => wid === p.id).map(([nid]) => {
+                  const n = neighborhoods.find(x => x.id === nid);
+                  if (!n) return null;
+                  return (
+                    <line key={`pl-${nid}`} x1={toX(n.x)} y1={toY(n.y)}
+                      x2={toX(p.x)} y2={toY(p.y)} stroke="#a78bfa" strokeWidth="1.2"
+                      strokeOpacity="0.5" strokeDasharray="2 3" />
+                  );
+                })}
+                <circle cx={toX(p.x)} cy={toY(p.y)} r={20}
+                  fill="#8b5cf6" fillOpacity="0.15" stroke="#a78bfa" strokeWidth="2" />
+                <rect x={toX(p.x) - 8} y={toY(p.y) - 3} width={16} height={8} rx={2} fill="#8b5cf6" />
+                <text x={toX(p.x)} y={toY(p.y) - 26} textAnchor="middle" fontSize="11"
+                  fontWeight="bold" fill="#c4b5fd" fontFamily="monospace">
+                  {p.id} · NEW
+                </text>
+                <text x={toX(p.x)} y={toY(p.y) + 34} textAnchor="middle" fontSize="9"
+                  fill="#a78bfa" fontFamily="monospace">
+                  cap {p.capacity}
+                </text>
+              </g>
+            );
+          })()}
+        </>
+      )}
     </svg>
   );
 }
