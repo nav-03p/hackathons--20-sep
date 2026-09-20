@@ -125,7 +125,7 @@ export interface CompareBody { neighborhoods: Point[]; candidates: Candidate[]; 
 
 export interface CompareResult { results: OptResult[]; note?: string; }
 
-export interface SimBody { neighborhoods: Point[]; candidates: Candidate[]; params?: Params; samples?: number; dist?: string; }
+export interface SimBody { neighborhoods: Point[]; candidates: Candidate[]; params?: Params; scenarios?: number; samples?: number; dist?: string; cv?: number; growthPct?: number; growthMult?: number; }
 
 export interface SimResult {
   expectedTotal: number;

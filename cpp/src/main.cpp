@@ -223,12 +223,28 @@ int main(int argc, char** argv){
             std::cout<<out.dump()<<std::endl; return 0;
         }
         if(mode=="simulate"){
-            int S=J.value("scenarios",200); double cv=J.value("cv",0.25);
-            SimOut r=simulate(N,M,p,S,cv,p.randomSeed);
+            // accept both naming conventions: scenarios|samples, cv|variability
+            int S=J.value("scenarios",J.value("samples",200));
+            if(S<1) S=1; if(S>5000) S=5000;
+            double cv=J.value("cv",0.25);
+            std::string dist=J.value("dist",std::string("normal"));
+            // demand growth: growthPct given in % (e.g. 15 => +15%)
+            double growthMult=J.value("growthMult",
+                1.0+J.value("growthPct",0.0)/100.0);
+            SimOut r=simulate(N,M,p,S,cv,p.randomSeed,dist,growthMult);
             out["expectedTotal"]=r.expTotal; out["p90"]=r.p90;
             out["worst"]=r.worst; out["best"]=r.best;
             out["avgFixed"]=r.avgFixed; out["totals"]=r.totals;
-            out["formula"]="E[C]=sum_s P(s)*C_s (Monte Carlo, Normal demand noise)";
+            out["distribution"]=json::array();
+            for(auto& d:r.distribution)
+                out["distribution"].push_back({{"cost",d.first},{"density",d.second}});
+            out["samples"]=S; out["dist"]=dist; out["cv"]=cv;
+            out["growthMult"]=growthMult;
+            out["formula"]="E[C]=sum_s P(s)*C_s (Monte Carlo, "+dist+" demand noise, growth x"+
+                std::to_string(growthMult).substr(0,4)+")";
+            out["note"]="Monte Carlo over "+std::to_string(S)+" scenarios with "+dist+
+                " demand noise (CV "+std::to_string((int)(cv*100))+"%) and demand growth x"+
+                std::to_string(growthMult).substr(0,4)+".";
             std::cout<<out.dump()<<std::endl; return 0;
         }
         if(mode=="sensitivity"){

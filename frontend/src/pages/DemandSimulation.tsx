@@ -18,6 +18,7 @@ export function DemandSimulation() {
   const { nb, wh, loaded } = useStore();
   const [samples, setSamples] = useState(500);
   const [growth, setGrowth] = useState(15);
+  const [cv, setCv] = useState(25);
   const [distType, setDistType] = useState<'normal' | 'lognormal' | 'uniform' | 'poisson'>('normal');
   const [running, setRunning] = useState(false);
   const [ran, setRan] = useState(false);
@@ -32,8 +33,10 @@ export function DemandSimulation() {
         neighborhoods: nb,
         candidates: wh,
         params: { algorithm: 'exact', deliveryCostPerKm: 2, maxServiceRadius: 60, capacity: 800 },
-        samples,
+        scenarios: samples,
         dist: distType,
+        cv: cv / 100,
+        growthPct: growth,
       };
       const out = await api.simulate(body);
       setResult(out);
@@ -41,7 +44,7 @@ export function DemandSimulation() {
     } catch (e: any) {
       setErr(e.message || 'Simulation failed');
     } finally { setRunning(false); }
-  }, [loaded, nb, wh, samples, distType]);
+  }, [loaded, nb, wh, samples, distType, cv, growth]);
 
   useEffect(() => { if (loaded && !result) run(); }, [loaded]);
 
@@ -64,7 +67,7 @@ export function DemandSimulation() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-lg font-semibold text-white">Demand Simulation</h1>
-          <p className="text-xs text-[#4a4a60] mt-0.5">Monte Carlo · {samples} scenarios · {distType} distribution</p>
+          <p className="text-xs text-[#4a4a60] mt-0.5">Monte Carlo · {samples} scenarios · {distType} · +{growth}% growth · {cv}% variability</p>
         </div>
         <Badge variant={ran ? 'success' : 'muted'}>{ran ? 'Completed' : 'Not run'}</Badge>
       </div>
@@ -95,6 +98,19 @@ export function DemandSimulation() {
               <input type="range" min={100} max={2000} step={100} value={samples}
                 onChange={e => setSamples(+e.target.value)}
                 className="w-full h-1 accent-blue-500 cursor-pointer" />
+            </div>
+
+            <div>
+              <div className="flex justify-between text-xs text-[#5a5a70] mb-1">
+                <span>Demand variability (CV %)</span>
+                <span className="font-mono text-white">{cv}%</span>
+              </div>
+              <input type="range" min={5} max={60} step={5} value={cv}
+                onChange={e => setCv(+e.target.value)}
+                className="w-full h-1 accent-blue-500 cursor-pointer" />
+              <div className="flex justify-between text-[10px] text-[#3a3a50] mt-0.5">
+                <span>stable</span><span>wild</span>
+              </div>
             </div>
 
             <div>
