@@ -378,6 +378,9 @@ export function OptimizationWorkspace() {
             </div>
           </div>
 
+          <details className="advanced-controls">
+            <summary>Advanced controls <ChevronDown size={13} /></summary>
+            <div className="advanced-controls-body space-y-4">
           {/* Vehicle Fleet Type Picker (Bonus 4) */}
           <div className="pt-2 border-t border-[#1e1e2e]">
             <label className="text-[10px] font-mono uppercase tracking-wider text-blue-400 flex items-center gap-1 mb-1.5">
@@ -473,6 +476,9 @@ export function OptimizationWorkspace() {
               <span>+100% (2x)</span>
             </div>
           </div>
+
+            </div>
+          </details>
 
           {/* Action Buttons */}
           <div className="pt-3 border-t border-[#1e1e2e] space-y-2">
