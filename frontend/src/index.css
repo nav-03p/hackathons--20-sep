@@ -150,8 +150,59 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   50% { box-shadow: 0 0 0 5px rgba(34, 197, 94, 0); }
 }
 
+@keyframes float-orbit {
+  0%, 100% { transform: rotate(0deg) translateX(0); opacity: .42; }
+  50% { transform: rotate(8deg) translateX(18px); opacity: .8; }
+}
+
+@keyframes scan {
+  from { transform: translateY(-120%); }
+  to { transform: translateY(520%); }
+}
+
+@keyframes shimmer {
+  from { background-position: 180% 0; }
+  to { background-position: -180% 0; }
+}
+
+@keyframes node-breathe {
+  0%, 100% { transform: scale(.9); opacity: .34; }
+  50% { transform: scale(1.15); opacity: .75; }
+}
+
+@keyframes route-flow {
+  to { stroke-dashoffset: -26; }
+}
+
 .page-enter { animation: rise-in 420ms ease-out both; }
 .status-live { animation: pulse-glow 2.5s ease-in-out infinite; }
+
+.dashboard-shell {
+  background-image: linear-gradient(rgba(73, 105, 139, .035) 1px, transparent 1px), linear-gradient(90deg, rgba(73, 105, 139, .035) 1px, transparent 1px);
+  background-size: 44px 44px;
+}
+
+.command-hero { isolation: isolate; }
+.command-hero::before { content: ''; position: absolute; inset: 0; background: radial-gradient(circle at 78% 48%, rgba(34, 211, 238, .14), transparent 23rem), linear-gradient(110deg, transparent, rgba(59, 130, 246, .06), transparent); pointer-events: none; }
+.hero-orbit { position: absolute; border: 1px solid rgba(103, 232, 249, .18); border-radius: 999px; pointer-events: none; }
+.hero-orbit-one { width: 30rem; height: 15rem; right: -7rem; top: 1rem; transform: rotate(-25deg); animation: float-orbit 8s ease-in-out infinite; }
+.hero-orbit-two { width: 24rem; height: 11rem; right: 0; top: 3rem; transform: rotate(24deg); border-color: rgba(96, 165, 250, .16); animation: float-orbit 11s ease-in-out infinite reverse; }
+.scanline { position: absolute; left: 0; right: 0; top: 0; height: 1px; background: linear-gradient(90deg, transparent, rgba(103, 232, 249, .4), transparent); animation: scan 5s linear infinite; pointer-events: none; opacity: .4; }
+.live-dot { width: .4rem; height: .4rem; border-radius: 999px; background: #67e8f9; box-shadow: 0 0 12px #67e8f9; animation: pulse-glow 1.7s infinite; }
+.holographic-text { color: transparent; background: linear-gradient(90deg, #67e8f9, #60a5fa 45%, #c4b5fd 85%); background-size: 200% auto; background-clip: text; animation: shimmer 5s linear infinite; }
+.network-grid { background-image: linear-gradient(rgba(88, 123, 158, .08) 1px, transparent 1px), linear-gradient(90deg, rgba(88, 123, 158, .08) 1px, transparent 1px); background-size: 24px 24px; }
+.route-dash { animation: route-flow 2.5s linear infinite; }
+.node-breathe { transform-box: fill-box; transform-origin: center; animation: node-breathe 3s ease-in-out infinite; }
+.kpi-card { position: relative; overflow: hidden; }
+.kpi-card::after { content: ''; position: absolute; inset: auto 0 0; height: 2px; background: linear-gradient(90deg, transparent, rgba(103, 232, 249, .7), transparent); transform: scaleX(.35); transition: transform 350ms ease; }
+.kpi-card:hover::after { transform: scaleX(1); }
+.kpi-card:hover .kpi-icon { transform: rotate(-6deg) scale(1.08); }
+.kpi-icon { transition: transform 250ms ease; }
+.chart-card { background: linear-gradient(145deg, rgba(16, 28, 43, .92), rgba(11, 18, 29, .88)); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}
 
 /* Readability baseline: the first version used compact 9–12px dashboard
    typography. These overrides keep the information density but make every
@@ -202,7 +253,10 @@ input::placeholder, textarea::placeholder {
   font-family: 'DM Sans', sans-serif !important;
 }
 
-html:not(.light) .bg-\[\#0a0a0f\] { background-color: transparent; }
+html:not(.light) .bg-\[\#0a0a0f\] { background-color: transparent !important; }
+html:not(.light) .bg-\[\#0d0d16\], html:not(.light) .bg-\[\#0d0d18\] { background-color: rgba(10, 18, 29, .78) !important; }
+html:not(.light) .bg-\[\#111118\] { background-color: rgba(16, 24, 36, .82) !important; }
+html:not(.light) .border-\[\#1e1e2e\], html:not(.light) .border-\[\#1a1a24\] { border-color: rgba(70, 94, 122, .36) !important; }
 
 html.light .leaflet-container {
   background: #f1f5f9 !important;
