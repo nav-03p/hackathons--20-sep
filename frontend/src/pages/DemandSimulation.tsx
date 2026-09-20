@@ -64,18 +64,18 @@ export function DemandSimulation() {
     : [];
 
   return (
-    <div className="h-full overflow-y-auto bg-[#0a0a0f] p-6 space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="demand-shell page-enter h-full overflow-y-auto bg-[#0a0a0f] p-4 md:p-7 space-y-6">
+      <div className="demand-hero flex items-center justify-between">
         <div>
-          <h1 className="text-lg font-semibold text-white">Demand Simulation</h1>
+          <h1 className="text-3xl md:text-4xl font-semibold tracking-tight text-white">Demand Intelligence</h1>
           <p className="text-xs text-[#4a4a60] mt-0.5">Monte Carlo · {samples} scenarios · {distType} · +{growth}% growth · {cv}% variability</p>
         </div>
         <Badge variant={ran ? 'success' : 'muted'}>{ran ? 'Completed' : 'Not run'}</Badge>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+      <div className="demand-workspace grid grid-cols-1 lg:grid-cols-4 gap-6">
         {/* Controls */}
-        <Card className="lg:col-span-1">
+        <Card className="simulation-controls lg:col-span-1">
           <CardHeader><span className="text-sm font-medium text-white">Simulation Controls</span></CardHeader>
           <CardBody className="space-y-4">
             <div>
@@ -161,7 +161,7 @@ export function DemandSimulation() {
         </Card>
 
         {/* Charts */}
-        <div className="lg:col-span-3 space-y-6">
+        <div className="simulation-results lg:col-span-3 space-y-6">
           {/* Demand forecast */}
           <Card>
             <CardHeader><span className="text-sm font-medium text-white">Cost Distribution ({fmt(samples)} simulations)</span></CardHeader>

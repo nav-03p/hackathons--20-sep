@@ -202,11 +202,11 @@ export function Fulfillment() {
   );
 
   return (
-    <div className="h-full overflow-y-auto bg-[#0a0a0f] p-6 space-y-5">
+    <div className="fulfillment-shell page-enter h-full overflow-y-auto bg-[#0a0a0f] p-4 md:p-7 space-y-5">
       {/* header */}
-      <div className="flex items-start justify-between gap-4 flex-wrap">
+      <div className="fulfillment-hero flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-lg font-semibold text-white flex items-center gap-2">
+          <h1 className="text-3xl md:text-4xl font-semibold tracking-tight text-white flex items-center gap-2">
             <Truck size={16} className="text-blue-400" />Order Fulfillment
             {demo?.warehouseVia && (
               <span className="text-[10px] font-mono font-normal text-[#8080a0] border border-[#1e1e2e] rounded px-1.5 py-0.5"
@@ -232,15 +232,15 @@ export function Fulfillment() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-3 rounded-lg border border-blue-500/20 bg-blue-500/5 p-4 text-xs">
-        <div><span className="font-semibold text-blue-300">1. Run plan</span><p className="mt-1 text-[#a0a0b0]">Score every warehouse for stock, distance, cost, and delivery deadline.</p></div>
-        <div><span className="font-semibold text-blue-300">2. Select a customer</span><p className="mt-1 text-[#a0a0b0]">Click an order below or a customer dot on the network map.</p></div>
-        <div><span className="font-semibold text-blue-300">3. Review the decision</span><p className="mt-1 text-[#a0a0b0]">See the recommended warehouse, delivery route, ETA, and cost.</p></div>
-        <div><span className="font-semibold text-blue-300">4. Plan growth</span><p className="mt-1 text-[#a0a0b0]">Use Year Simulation to identify when and where to open a new warehouse.</p></div>
+      <div className="fulfillment-steps grid grid-cols-1 md:grid-cols-4 gap-3 text-xs">
+        <div className="workflow-step active"><b>01</b><span>Run plan</span><p>Score every warehouse for stock, distance, cost, and delivery deadline.</p></div>
+        <div className="workflow-step"><b>02</b><span>Select a customer</span><p>Click an order below or a customer dot on the network map.</p></div>
+        <div className="workflow-step"><b>03</b><span>Review the decision</span><p>See the recommended warehouse, delivery route, ETA, and cost.</p></div>
+        <div className="workflow-step"><b>04</b><span>Plan growth</span><p>Use Year Simulation to identify when and where to open a new warehouse.</p></div>
       </div>
 
       {/* operating parameters */}
-      <Card>
+      <Card className="fulfillment-controls">
         <CardBody className="flex flex-wrap items-end gap-3">
           <label className="text-[10px] font-mono uppercase tracking-widest text-[#3a3a50] flex flex-col gap-1">
             Strategy
@@ -292,8 +292,8 @@ export function Fulfillment() {
       </Card>
 
       {err && (
-        <Card><CardBody className="flex items-center gap-2 text-xs text-red-400">
-          <AlertTriangle size={13} />{err}
+        <Card className="ops-error"><CardBody className="flex items-start gap-3 text-xs text-red-300">
+          <AlertTriangle size={16} className="mt-0.5 shrink-0" /><div><strong className="block text-red-200">Fulfillment plan unavailable</strong><span className="mt-1 block text-red-300/80">The operational solver could not complete this plan. Existing controls and data are unchanged.</span><code className="mt-2 block break-all rounded bg-black/20 px-2 py-1 font-mono text-[10px] text-red-300/60">{err}</code></div>
         </CardBody></Card>
       )}
 
@@ -373,7 +373,7 @@ export function Fulfillment() {
       )}
 
       {/* tabs */}
-      <div className="flex items-center gap-1 border-b border-[#1e1e2e] overflow-x-auto">
+      <div className="operations-tabs flex items-center gap-1 border-b border-[#1e1e2e] overflow-x-auto">
         {TABS.map(t => {
           const Icon = t.icon;
           const count = t.id === 'rebalance' ? plan?.rebalance?.moves.length ?? 0 : 0;

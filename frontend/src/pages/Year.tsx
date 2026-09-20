@@ -93,14 +93,14 @@ export function Year() {
   const stats = result?.stats;
 
   return (
-    <div className="h-full overflow-y-auto bg-[#0a0a0f] p-6 space-y-5">
-      <div className="flex items-center justify-between">
+    <div className="year-shell page-enter h-full overflow-y-auto bg-[#0a0a0f] p-4 md:p-7 space-y-5">
+      <div className="scenario-hero flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded bg-blue-600/20 border border-blue-500/20 flex items-center justify-center">
             <Clock size={15} className="text-blue-400" />
           </div>
           <div>
-            <h1 className="text-lg font-semibold text-white">Expansion Scenario Builder</h1>
+            <h1 className="text-3xl md:text-4xl font-semibold tracking-tight text-white">Expansion Scenario Builder</h1>
             <p className="text-xs text-[#8080a0] mt-0.5">Describe what is changing in your business. LogiOpt turns it into an expansion recommendation.</p>
           </div>
         </div>
@@ -120,7 +120,7 @@ export function Year() {
         </div>
       )}
 
-      <section className="rounded-lg border border-[#1e1e2e] bg-[#0d0d14] p-4">
+      <section className="scenario-controls rounded-lg border border-[#1e1e2e] bg-[#0d0d14] p-4">
         <div className="mb-3 flex items-center gap-2">
           <TrendingUp size={14} className="text-blue-400" />
           <h2 className="text-sm font-medium text-white">1. Current network</h2>

@@ -255,20 +255,21 @@ export function OptimizationWorkspace() {
   }) || [];
 
   return (
-    <div className="h-full min-h-0 flex flex-col md:flex-row overflow-hidden bg-[#0a0a0f]">
+    <div className="optimization-shell h-full min-h-0 flex flex-col md:flex-row overflow-hidden bg-[#0a0a0f]">
       {/* Left Column: Controls & Configuration */}
-      <div className="w-full md:w-96 flex-shrink-0 border-r border-[#1e1e2e] bg-[#0d0d16] flex flex-col h-full overflow-y-auto">
-        <div className="p-4 border-b border-[#1e1e2e]">
+      <div className="optimization-controls w-full md:w-96 flex-shrink-0 border-r border-[#1e1e2e] bg-[#0d0d16] flex flex-col h-full overflow-y-auto">
+        <div className="optimization-heading p-5 border-b border-[#1e1e2e]">
           <div className="flex items-center justify-between">
             <h1 className="text-sm font-semibold text-white flex items-center gap-2">
               <SlidersHorizontal size={15} className="text-blue-400" />
-              Optimizer Controls
+              <span className="text-xl tracking-tight">Find the optimal network.</span>
             </h1>
             <Badge variant="muted">{wh.length} candidate hubs</Badge>
           </div>
           <p className="text-[11px] text-[#6b6b80] mt-1">
-            Capacitated Facility Location with multi-vehicle & traffic routing
+             Configure constraints, then let the network solve itself.
           </p>
+          <div className="optimization-metrics mt-4 grid grid-cols-3 gap-2"><div><strong>{scaledNb.length}</strong><span>demand nodes</span></div><div><strong>{wh.length}</strong><span>candidate hubs</span></div><div><strong>{result?.runtimeMs ?? '—'}</strong><span>solve ms</span></div></div>
         </div>
 
         <div className="p-4 space-y-4 flex-1">
@@ -514,9 +515,9 @@ export function OptimizationWorkspace() {
       </div>
 
       {/* Main Center & Right Area */}
-      <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
+      <div className="optimization-workspace flex-1 flex flex-col min-w-0 h-full overflow-hidden">
         {/* Top View Switcher Tabs */}
-        <div className="h-12 border-b border-[#1e1e2e] bg-[#0d0d16] px-4 flex items-center justify-between flex-shrink-0">
+        <div className="workspace-tabs h-14 border-b border-[#1e1e2e] bg-[#0d0d16] px-4 flex items-center justify-between flex-shrink-0">
           <div className="flex items-center gap-2">
             <button
               onClick={() => setActiveTab('map')}
@@ -580,7 +581,7 @@ export function OptimizationWorkspace() {
         </div>
 
         {/* Tab Contents */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        <div className="workspace-content flex-1 overflow-y-auto p-4 space-y-4">
           {err && (
             <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-xs flex items-center justify-between">
               <div className="flex items-center gap-2">
