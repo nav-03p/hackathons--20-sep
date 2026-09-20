@@ -6,7 +6,7 @@ import { fmtCurrency, fmtPct } from '@/lib/utils';
 import {
   Play, X, CheckCircle2, AlertTriangle,
   Loader2, Info, ChevronDown, Truck, Fuel, Clock,
-  TrendingUp, Compass, BarChart3, Layers, SlidersHorizontal,
+  TrendingUp, Compass, BarChart3,
   Maximize2, ArrowRight, ShieldAlert, Sparkles, MapPin
 } from 'lucide-react';
 import { useStore } from '@/lib/store';
@@ -255,24 +255,17 @@ export function OptimizationWorkspace() {
   }) || [];
 
   return (
-    <div className="optimization-shell h-full min-h-0 flex flex-col md:flex-row overflow-hidden bg-[#0a0a0f]">
+    <div className="optimization-shell h-full min-h-0 flex flex-col overflow-hidden bg-[#0a0a0f]">
       {/* Left Column: Controls & Configuration */}
-      <div className="optimization-controls w-full md:w-96 flex-shrink-0 border-r border-[#1e1e2e] bg-[#0d0d16] flex flex-col h-full overflow-y-auto">
-        <div className="optimization-heading p-5 border-b border-[#1e1e2e]">
+      <div className="optimization-controls w-full flex-shrink-0 border-b border-[#1e1e2e] bg-[#0d0d16] flex flex-col overflow-visible">
+        <div className="optimization-heading px-6 py-5 border-b border-[#1e1e2e]">
           <div className="flex items-center justify-between">
-            <h1 className="text-sm font-semibold text-white flex items-center gap-2">
-              <SlidersHorizontal size={15} className="text-blue-400" />
-              <span className="text-xl tracking-tight">Find the optimal network.</span>
-            </h1>
-            <Badge variant="muted">{wh.length} candidate hubs</Badge>
+            <div><h1 className="text-2xl md:text-3xl font-semibold tracking-tight text-white">Optimization Workspace</h1><p className="mt-1 text-sm text-[#7f96af]">Design the most efficient warehouse network.</p></div>
+            <div className="flex items-center gap-3"><div className="optimization-metrics hidden sm:grid grid-cols-3 gap-3"><div><strong>{scaledNb.length}</strong><span>demand nodes</span></div><div><strong>{wh.length}</strong><span>candidate hubs</span></div><div><strong>{result?.runtimeMs ?? '—'}</strong><span>solve ms</span></div></div><Button variant="primary" size="md" loading={running} onClick={run} className="shadow-lg shadow-blue-500/20"><Play size={14} />Run Optimization</Button></div>
           </div>
-          <p className="text-[11px] text-[#6b6b80] mt-1">
-             Configure constraints, then let the network solve itself.
-          </p>
-          <div className="optimization-metrics mt-4 grid grid-cols-3 gap-2"><div><strong>{scaledNb.length}</strong><span>demand nodes</span></div><div><strong>{wh.length}</strong><span>candidate hubs</span></div><div><strong>{result?.runtimeMs ?? '—'}</strong><span>solve ms</span></div></div>
         </div>
 
-        <div className="p-4 space-y-4 flex-1">
+        <div className="optimization-controlbar px-6 py-4 space-y-4">
           {/* Algorithm Selector */}
           <div>
             <label className="text-[10px] font-mono uppercase tracking-wider text-[#8080a0] block mb-1">
@@ -472,19 +465,8 @@ export function OptimizationWorkspace() {
             </div>
           </details>
 
-          {/* Action Buttons */}
-          <div className="pt-3 border-t border-[#1e1e2e] space-y-2">
-            <Button
-              variant="primary"
-              size="md"
-              loading={running}
-              onClick={run}
-              className="w-full flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20"
-            >
-              <Play size={14} />
-              {running ? 'Solving MILP Formulation...' : 'Run Optimization'}
-            </Button>
-
+          {/* Secondary analysis actions */}
+          <div className="optimization-secondary-actions pt-3 border-t border-[#1e1e2e] space-y-2">
             <div className="grid grid-cols-2 gap-2">
               <Button
                 variant="outline"
@@ -516,57 +498,15 @@ export function OptimizationWorkspace() {
       <div className="optimization-workspace flex-1 flex flex-col min-w-0 h-full overflow-hidden">
         {/* Top View Switcher Tabs */}
         <div className="workspace-tabs h-14 border-b border-[#1e1e2e] bg-[#0d0d16] px-4 flex items-center justify-between flex-shrink-0">
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setActiveTab('map')}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors ${
-                activeTab === 'map'
-                  ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30'
-                  : 'text-[#8080a0] hover:text-white hover:bg-[#1a1a24]'
-              }`}
-            >
-              <Layers size={13} /> Map & Network Visualizer
-            </button>
-            <button
-              onClick={() => setActiveTab('baseline')}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors ${
-                activeTab === 'baseline'
-                  ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30'
-                  : 'text-[#8080a0] hover:text-white hover:bg-[#1a1a24]'
-              }`}
-            >
-              <CheckCircle2 size={13} /> Baseline vs. Optimized
-            </button>
-            <button
-              onClick={() => setActiveTab('sweep')}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors ${
-                activeTab === 'sweep'
-                  ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30'
-                  : 'text-[#8080a0] hover:text-white hover:bg-[#1a1a24]'
-              }`}
-            >
-              <BarChart3 size={13} /> Infra vs Delivery Sweep (k=1..N)
-            </button>
-            <button
-              onClick={() => setActiveTab('median')}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors ${
-                activeTab === 'median'
-                  ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30'
-                  : 'text-[#8080a0] hover:text-white hover:bg-[#1a1a24]'
-              }`}
-            >
-              <Compass size={13} /> Weiszfeld Geometric Center
-            </button>
-            <button
-              onClick={() => setActiveTab('expand')}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors ${
-                activeTab === 'expand'
-                  ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30'
-                  : 'text-[#8080a0] hover:text-white hover:bg-[#1a1a24]'
-              }`}
-            >
-              <TrendingUp size={13} /> Expansion Advisor
-            </button>
+          <div className="optimization-view-switcher flex items-center gap-2">
+            <span className="hidden sm:block text-[10px] font-mono uppercase tracking-wider text-[#617892]">View</span>
+            <select value={activeTab} onChange={e => setActiveTab(e.target.value as typeof activeTab)} className="optimization-view-select">
+              <option value="map">Map & Network Visualizer</option>
+              <option value="baseline">Baseline vs. Optimized</option>
+              <option value="sweep">Infra vs Delivery Sweep</option>
+              <option value="median">Weiszfeld Geometric Center</option>
+              <option value="expand">Expansion Advisor</option>
+            </select>
           </div>
 
           <div className="flex items-center gap-2">
