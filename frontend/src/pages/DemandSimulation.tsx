@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useStore } from '@/lib/store';
 import { api, type SimBody } from '@/lib/api';
+import { StepNarration } from '@/components/ui/StepNarration';
 
 export function DemandSimulation() {
   const { nb, wh, loaded } = useStore();
@@ -276,14 +277,7 @@ export function DemandSimulation() {
             </div>
           </CardHeader>
           <CardBody>
-            <ul className="space-y-2">
-              {result.summary.map((line, i) => (
-                <li key={i} className="text-xs text-[#c0c0d0] leading-relaxed flex items-start gap-2">
-                  <span className="text-blue-400 font-bold mt-0.5">•</span>
-                  <span>{line}</span>
-                </li>
-              ))}
-            </ul>
+            <StepNarration lines={result.summary} via={result.narrVia} />
           </CardBody>
         </Card>
       )}

@@ -146,7 +146,7 @@ function runExpansion(N0, C0, P, X, runWlopt){
 // Template summary (always available, used when LLM is unavailable)
 function templateSummary(o){
   const L=[];
-  L.push('At +'+o.growthPct+'% demand ('+o.grownDemandTotal+' orders/day), peak hub utilization is '+
+  L.push('Demand surge: at +'+o.growthPct+'% demand ('+o.grownDemandTotal+' orders/day), peak hub utilization is '+
     Math.round((o.base.maxUtil||0)*100)+'% vs threshold '+Math.round(o.utilThreshold*100)+'%.');
   if(o.expansions.length){
     L.push('Expand '+o.expansions.length+' existing hub'+(o.expansions.length>1?'s':'')+': '+
@@ -173,14 +173,27 @@ function templateSummary(o){
   L.push('Unserved areas: '+o.savings.unservedBefore+' → '+o.savings.unservedAfter+
     '; unmet capacity: '+o.savings.unmetBefore+' → '+o.savings.unmetAfter+' orders/day.');
   if(o.savings.savedPerPeriod>0){
-    L.push('Delivery cost '+Math.round(o.base.totalCost||0)+' → '+Math.round(o.final.totalCost||0)+
+    L.push('Cost impact: delivery cost '+Math.round(o.base.totalCost||0)+' → '+Math.round(o.final.totalCost||0)+
       ' (saves ~$'+o.savings.savedPerPeriod+'/period)'+(o.savings.paybackDays?
       '; new-site payback ~'+o.savings.paybackDays+' days.':'.'));
   } else {
-    L.push('Delivery cost moves '+Math.round(o.base.totalCost||0)+' → '+Math.round(o.final.totalCost||
+    L.push('Cost impact: delivery cost moves '+Math.round(o.base.totalCost||0)+' → '+Math.round(o.final.totalCost||
       0)+' — the plan buys full coverage: '+o.savings.unmetBefore+' previously unserved/unmet orders now served.');
   }
   return L;
+}
+
+// quality check: rejects junk/instruction-echo and number-free "summaries"
+function narrationGood(txt){
+  if(!txt) return false;
+  const t=String(txt).trim();
+  if(t.length<200) return false;
+  if(t.split(/\n+/).filter(function(l){ return l.trim(); }).length<3) return false;
+  const low=t.toLowerCase();
+  if(/each in (the )?form|no markdown|no numbering|exactly \d+ lines|we need to|as an ai|i cannot|i'm sorry/.test(low)) return false;
+  const digits=(t.match(/\d[\d.,]*/g)||[]);
+  if(digits.length<3) return false;
+  return true;
 }
 
 // LLM executive summary via OpenRouter/OpenAI-compatible chat; template fallback.
@@ -199,12 +212,10 @@ function llmSummarize(o, cb, attempt){
       unserved:(o.final.unserved||[]).length, totalCost:o.final.totalCost,
       warehouseLoads:o.final.warehouseLoads},
     savings:o.savings};
-  envdb.llmChat([{role:'user', content:'You are a logistics OR engineer. Give an executive summary in 6-8 short punchy lines for a hackathon demo of this demand-growth expansion plan. Cover: how much demand grew, which existing warehouses to expand and by how much (with before/after utilization and loads), the exact coordinates where each new warehouse should open and why (geometric median of stressed areas), the re-optimized network, utilization/unserved improvement, cost saved and payback. Data: '+JSON.stringify(data).slice(0,4000)}])
+  envdb.llmChat([{role:'user', content:'You are a logistics OR engineer. Produce a "Demand-Growth Expansion Plan" for a hackathon demo: exactly 8 lines, each in the strict form "Title: one clear sentence" (no markdown, no numbering, no bold). Cover in this order: Demand Surge (how much demand grew, total orders/day), Capacity Alert (which existing warehouses to expand and by how much, with before/after utilization and loads), New Hub Locations (exact computed coordinates for each new warehouse and why — geometric median of stressed areas), Reoptimized Network (final open set, utilization/unserved improvement), Cost Impact (cost saved or coverage bought), Payback (break-even), Risk Watch (what to monitor), Bottom Line. Use the real numbers from the data. Data: '+JSON.stringify(data).slice(0,4000)}])
     .then(function(r){
       const txt=(r&&r.ok&&r.text)?r.text:'';
-      // quality gate: free-tier models sometimes emit junk one-liners
-      const good=txt.trim().length>=200 && txt.split(/\n+/).filter(function(l){return l.trim();}).length>=3;
-      if(good){
+      if(narrationGood(txt)){
         cb(null,{text:txt, via:'llm:'+(process.env.OPENROUTER_MODEL||process.env.LLM_MODEL||'default')});
       } else if(attempt<2){
         setTimeout(function(){ llmSummarize(o, cb, attempt+1); }, 1200);
@@ -226,12 +237,12 @@ function templateSimSummary(o){
   const L=[];
   const net=o.expectedNetwork||{};
   const vol=o.expectedTotal?((o.p90/o.expectedTotal-1)*100):0;
-  L.push('Condition at +'+o.growthPct+'% demand ('+o.dist+' noise, CV '+Math.round((o.cv||0)*100)+
-    '%): expected daily cost $'+Math.round(o.expectedTotal||0)+', P90 $'+Math.round(o.p90||0)+
+  L.push('Future condition: at +'+o.growthPct+'% demand ('+o.dist+' noise, CV '+Math.round((o.cv||0)*100)+
+    '%), expected daily cost $'+Math.round(o.expectedTotal||0)+', P90 $'+Math.round(o.p90||0)+
     ' (+'+vol.toFixed(0)+'% tail risk), worst case $'+Math.round(o.worst||0)+'.');
   const wl=net.warehouseLoads||[];
   if(wl.length){
-    L.push('Expected network ('+wl.length+' hubs): '+wl.map(function(w){
+    L.push('Network load: '+wl.map(function(w){
       return w.name+' '+w.load+'/'+w.capacity+' ('+Math.round(w.util*100)+'%)'; }).join(', ')+'.');
   }
   const hot=wl.filter(function(w){ return w.util>=0.85; });
@@ -243,10 +254,10 @@ function templateSimSummary(o){
     L.push('What to do: no hub crosses the 85% stress line — current network absorbs this growth.');
   }
   if((net.unserved||[]).length){
-    L.push('Unserved areas appear ('+net.unserved.length+'): open an extra hub near the unserved cluster — '+
-      'run the Expansion Advisor for exact data-computed coordinates.');
+    L.push('Coverage action: '+net.unserved.length+' areas would go unserved — open an extra hub near the '+
+      'unserved cluster; the Expansion Advisor computes the exact coordinates.');
   }
-  L.push('Volatility: '+o.samples+' scenarios, best $'+Math.round(o.best||0)+' vs worst $'+
+  L.push('Tail risk: across '+o.samples+' scenarios costs run from $'+Math.round(o.best||0)+' to $'+
     Math.round(o.worst||0)+' — keep safety stock and flexible fleet for the P90 tail.');
   L.push('Recommendation: re-run this simulation at +'+Math.round((o.growthPct||0)+15)+
     '% to see when the network tips over, and pre-secure the expansion sites early.');
@@ -264,11 +275,10 @@ function narrateSim(o, cb, attempt){
     expectedNetwork:{open:o.expectedNetwork&&o.expectedNetwork.openWarehouses,
       warehouseLoads:o.expectedNetwork&&o.expectedNetwork.warehouseLoads,
       unserved:o.expectedNetwork&&o.expectedNetwork.unserved}};
-  envdb.llmChat([{role:'user', content:'You are a logistics OR engineer. In 6-8 short punchy lines, describe for a hackathon demo what the network condition WILL BE under this simulated demand growth (expected cost, P90 tail risk, per-warehouse load/utilization) and exactly WHAT TO DO (which hubs to expand by how much, whether/where to add a hub, stock flexibility). Use only the data. Data: '+JSON.stringify(data).slice(0,4000)}])
+  envdb.llmChat([{role:'user', content:'You are a logistics OR engineer. Produce a "Demand Simulation Outlook" for a hackathon demo: exactly 7 lines, each in the strict form "Title: one clear sentence" (no markdown, no numbering, no bold). Cover in this order: Future Condition (expected cost and demand level at the horizon), Tail Risk (P90 vs expected, worst case, what volatility means), Network Load (per-warehouse load/capacity/utilization from the data), Capacity Action (which hubs to expand and by how much), Coverage Action (unserved areas / where an extra hub is needed), Flexibility (safety stock & fleet advice for the tail), Next Step (what growth level to test next). Use only the real numbers from the data. Data: '+JSON.stringify(data).slice(0,4000)}])
     .then(function(r){
       const txt=(r&&r.ok&&r.text)?r.text:'';
-      const good=txt.trim().length>=200&&txt.split(/\n+/).filter(function(l){return l.trim();}).length>=3;
-      if(good) cb(null,{text:txt, via:'llm:'+(process.env.OPENROUTER_MODEL||process.env.LLM_MODEL||'default')});
+      if(narrationGood(txt)) cb(null,{text:txt, via:'llm:'+(process.env.OPENROUTER_MODEL||process.env.LLM_MODEL||'default')});
       else if(attempt<2) setTimeout(function(){ narrateSim(o, cb, attempt+1); },1200);
       else if(r&&r.noKey) giveup('template (no LLM key)');
       else giveup('template (llm unavailable)');

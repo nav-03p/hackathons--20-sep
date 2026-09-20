@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { useStore } from '@/lib/store';
 import { api, type Params, type OptResult, type Point, type Candidate, type ExpansionResult } from '@/lib/api';
+import { StepNarration } from '@/components/ui/StepNarration';
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip,
   Legend, CartesianGrid, ResponsiveContainer, ReferenceLine
@@ -1027,14 +1028,7 @@ export function OptimizationWorkspace() {
                       </div>
                     </CardHeader>
                     <CardBody>
-                      <ul className="space-y-2">
-                        {expRes.summary.map((line, i) => (
-                          <li key={i} className="text-xs text-[#c0c0d0] leading-relaxed flex items-start gap-2">
-                            <span className="text-violet-400 font-bold mt-0.5">•</span>
-                            <span>{line}</span>
-                          </li>
-                        ))}
-                      </ul>
+                      <StepNarration lines={expRes.summary} via={expRes.narrVia} />
                     </CardBody>
                   </Card>
                 )}

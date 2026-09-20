@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { useStore } from '@/lib/store';
 import { api, type YearResult } from '@/lib/api';
+import { StepNarration } from '@/components/ui/StepNarration';
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, Legend,
   CartesianGrid, ResponsiveContainer
@@ -355,12 +356,8 @@ export function Year() {
               </div>
             </CardHeader>
             <CardBody className="space-y-3">
-              {result.narration ? (
-                <ul className="space-y-2 text-xs text-[#c0c0d0]">
-                  {result.narration.map((line, i) => (
-                    <li key={i} className="flex gap-2"><span className="text-blue-400">•</span>{line}</li>
-                  ))}
-                </ul>
+              {result.narration && result.narration.length ? (
+                <StepNarration lines={result.narration} via={result.narrVia} />
               ) : (
                 <div className="text-xs text-[#3a3a50]">No narration produced.</div>
               )}

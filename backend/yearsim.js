@@ -211,35 +211,51 @@ function runYear(N0, C0, P, Y, runWlopt){
 function templateNarr(o){
   const L=[];
   const pr=o.firstPressure;
-  L.push('Year story: demand grows ~'+o.year.dailyGrowthPct+'%/day'+
-    (o.year.hotspotMult?(' (hotspot x'+o.year.hotspotMult+')'):'')+
+  const hs=o.year&&o.year.hotspot;
+  L.push('Growth story: demand grows ~'+o.year.dailyGrowthPct+'%/day'+
+    (o.year.hotspotMult?(' (hotspot x'+o.year.hotspotMult+(hs?(' @ '+hs.x+','+hs.y):'')+')'):'')+
     ' with weekly/annual seasonality.');
-  if(pr) L.push('Pressure starts month '+pr.month+' (day '+pr.day+'): peak utilization '+
+  if(pr) L.push('Pressure alert: strain peaks month '+pr.month+' (day '+pr.day+') — peak utilization '+
     Math.round(pr.maxUtil*100)+'%, '+pr.unserved+' unserved, avg '+pr.avgKm+' km.');
-  else L.push('No hard pressure this year (utilization stays under threshold).');
+  else L.push('Pressure alert: no hard pressure this year (utilization stays under threshold).');
   (o.proposals&&o.proposals.length?o.proposals:[o.proposal]).forEach(function(p,i){
     if(!p) return;
-    L.push('New warehouse '+(i+1)+' '+p.id+' @('+p.x+', '+p.y+'), cap '+
+    L.push('New hub '+(i+1)+': '+p.id+' @('+p.x+', '+p.y+'), cap '+
       p.capacity+', fixed $'+p.fixedCost+'. '+p.note+'.');
   });
-  L.push('Reconnect at year-end: ['+o.newSolEnd.openWarehouses.join(', ')+
+  L.push('Reconnect: year-end network ['+o.newSolEnd.openWarehouses.join(', ')+
     '] vs base ['+o.baseSolMonth0.openWarehouses.join(', ')+'].');
-  L.push('Money: base year $'+Math.round(o.totalYearBase)+
+  L.push('Savings: base year $'+Math.round(o.totalYearBase)+
     ' vs with-new $'+Math.round(o.totalYearNew)+
-    ' => SAVE $'+Math.round(o.saved)+
-    ' (~$'+Math.round(o.stats.money.avgDaySave)+'/day). Payback ~'+
-    (o.stats.money.paybackDays!=null?o.stats.money.paybackDays+' days':'n/a')+'.');
-  L.push('Ops: ~'+o.stats.kmSaved+' fewer km => ~'+o.stats.driveHrsSaved+
+    ' => save $'+Math.round(o.saved)+
+    ' (~$'+Math.round(o.stats.money.avgDaySave)+'/day).');
+  L.push('Ops impact: ~'+o.stats.kmSaved+' fewer km => ~'+o.stats.driveHrsSaved+
     ' drive-hours, ~$'+o.stats.labourSaved+' labour, ~$'+o.stats.fuelSaved+' fuel saved.');
-  L.push('Why here: demand-weighted geometric median minimizes ΣD·d for day-365 demand; '+
-    'extra dock absorbs the overloaded region the pressure report flagged.');
+  L.push('Why here: the demand-weighted geometric median minimizes ΣD·d for day-365 demand; '+
+    'the extra dock absorbs the overloaded region the pressure report flagged.');
+  if(o.stats.money.paybackDays!=null)
+    L.push('Payback: break even in ~'+o.stats.money.paybackDays+' days (~'+
+      (o.stats.money.paybackDays/365).toFixed(1)+' years).');
   return L;
 }
+// quality check shared by all narrators: rejects junk/instruction-echo and
+// number-free "summaries" (a real plan always carries metrics)
+function narrationGood(txt){
+  if(!txt) return false;
+  const t=String(txt).trim();
+  if(t.length<200) return false;
+  if(t.split(/\n+/).filter(function(l){ return l.trim(); }).length<3) return false;
+  const low=t.toLowerCase();
+  if(/each in (the )?form|no markdown|no numbering|exactly \d+ lines|we need to|as an ai|i cannot|i'm sorry/.test(low)) return false;
+  const digits=(t.match(/\d[\d.,]*/g)||[]);
+  if(digits.length<3) return false;
+  return true;
+}
+
 function llmNarrate(payload, cb, attempt){
   attempt=attempt||1;
-  const fallback=require('./yearsim_fb.js');
   let envdb=null; try{ envdb=require('./envdb.js'); }catch(e){}
-  const fb=fallback.templateNarr(payload);
+  const fb=templateNarr(payload);   // local up-to-date structured template
   const giveup=function(via){ cb(null,{text:fb.join('\n'),via:via}); };
   if(!envdb){ giveup('template (no LLM key)'); return; }
   const summary={pressure:payload.firstPressure,proposal:payload.proposal,
@@ -247,12 +263,10 @@ function llmNarrate(payload, cb, attempt){
     base:(payload.baseSolMonth0||{}).openWarehouses,end:(payload.newSolEnd||{}).openWarehouses,
     money:(payload.stats||{}).money,ops:{km:(payload.stats||{}).kmSaved,hrs:(payload.stats||{}).driveHrsSaved,
     labour:(payload.stats||{}).labourSaved,fuel:(payload.stats||{}).fuelSaved}};
-  envdb.llmChat([{role:'user',content:'You are a logistics OR engineer. Explain this warehouse-year plan in 8 short punchy lines for a hackathon demo. Cover: where pressure appears, the exact coordinates where each new warehouse should open and why (demand-weighted geometric median of the stressed catchment), reconnections, money/time/labour/fuel saved, payback. Data: '+JSON.stringify(summary).slice(0,4000)}])
+  envdb.llmChat([{role:'user',content:'You are a logistics OR engineer. Produce a "Warehouse-Year Plan" for a hackathon demo: exactly 8 lines, each in the strict form "Title: one clear sentence" (no markdown, no numbering, no bold). Cover in this order: Pressure Alert (when strain peaks and how bad), New Hub Location (exact computed coordinates and what they are), Why Here (geometric median of stressed catchment), Reconnect & Rebalance (which routes/warehouses change), Savings Snapshot (cost + km + fuel per year), Labor Relief (driver hours freed), Fast Payback (break-even time), Bottom Line. Use the real numbers from the data. Data: '+JSON.stringify(summary).slice(0,4000)}])
     .then(function(r){
       const txt=(r&&r.ok&&r.text)?r.text:'';
-      // quality gate: free-tier routers sometimes emit junk — retry then template
-      const good=txt.trim().length>=200&&txt.split(/\n+/).filter(function(l){return l.trim();}).length>=3;
-      if(good) cb(null,{text:txt,via:'openrouter:'+(process.env.OPENROUTER_MODEL||process.env.LLM_MODEL||'gpt-4o-mini')});
+      if(narrationGood(txt)) cb(null,{text:txt,via:'openrouter:'+(process.env.OPENROUTER_MODEL||process.env.LLM_MODEL||'gpt-4o-mini')});
       else if(attempt<2) setTimeout(function(){ llmNarrate(payload,cb,attempt+1); },1200);
       else if(r&&r.noKey) giveup('template (no LLM key)');
       else giveup('template (llm unavailable)');
