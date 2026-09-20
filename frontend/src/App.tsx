@@ -22,7 +22,7 @@ import { useStore } from '@/lib/store';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 function AppPage({ page, navigate }: { page: Page; navigate: (p: Page) => void }) {
-  return <div key={page} className="page-enter h-full">
+  return <div key={page} className="page-enter min-h-full">
     {(() => {
       switch (page) {
         case 'dashboard':    return <Dashboard onNavigate={navigate} />;
@@ -89,9 +89,9 @@ export default function App() {
       </div>
 
       {/* Main */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0">
         <TopNav onMenuOpen={() => setSidebarOpen(true)} currentPage={page} onLogout={() => setPage('landing')} />
-        <main className="flex-1 overflow-hidden">
+        <main className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
           <ErrorBoundary>
             <AppPage page={page} navigate={navigate} />
           </ErrorBoundary>
