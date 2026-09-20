@@ -347,8 +347,8 @@ export function OptimizationWorkspace() {
             </div>
           </div>
 
-          {/* Fixed Hub Setup Cost & Distance Metric */}
-          <div className="grid grid-cols-2 gap-2">
+          {/* Fixed Hub Setup Cost */}
+          <div>
             <div>
               <label className="text-[10px] font-mono text-[#8080a0] block mb-1">Fixed Cost / Hub ($)</label>
               <input
@@ -359,28 +359,20 @@ export function OptimizationWorkspace() {
                 className="w-full px-2.5 py-1.5 rounded text-xs bg-[#111118] border border-[#1e1e2e] text-white font-mono focus:border-blue-500/50 focus:outline-none"
               />
             </div>
-            <div>
-              <label className="text-[10px] font-mono text-[#8080a0] block mb-1">Distance Metric</label>
-              <div className="relative">
-                <select
-                  value={dist}
-                  onChange={e => setDist(e.target.value)}
-                  className="w-full appearance-none px-2 py-1.5 rounded text-xs bg-[#111118] border border-[#1e1e2e] text-[#e0e0f0] focus:border-blue-500/50 focus:outline-none"
-                >
-                  {DIST_METRICS.map(d => (
-                    <option key={d.key} value={d.key}>
-                      {d.label}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown size={12} className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[#4a4a60] pointer-events-none" />
-              </div>
-            </div>
           </div>
 
           <details className="advanced-controls">
             <summary>Advanced controls <ChevronDown size={13} /></summary>
             <div className="advanced-controls-body space-y-4">
+          <div>
+            <label className="text-[10px] font-mono text-[#8080a0] block mb-1">Distance Metric</label>
+            <div className="relative">
+              <select value={dist} onChange={e => setDist(e.target.value)} className="w-full appearance-none px-2 py-1.5 rounded text-xs bg-[#111118] border border-[#1e1e2e] text-[#e0e0f0] focus:border-blue-500/50 focus:outline-none">
+                {DIST_METRICS.map(d => <option key={d.key} value={d.key}>{d.label}</option>)}
+              </select>
+              <ChevronDown size={12} className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[#4a4a60] pointer-events-none" />
+            </div>
+          </div>
           {/* Vehicle Fleet Type Picker (Bonus 4) */}
           <div className="pt-2 border-t border-[#1e1e2e]">
             <label className="text-[10px] font-mono uppercase tracking-wider text-blue-400 flex items-center gap-1 mb-1.5">
@@ -600,9 +592,9 @@ export function OptimizationWorkspace() {
 
           {/* TAB 1: Map Visualizer */}
           {activeTab === 'map' && (
-            <div className="grid grid-cols-1 xl:grid-cols-4 gap-4 h-[calc(100vh-140px)] min-h-[550px]">
+            <div className="optimization-map-zone grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_290px] gap-4 h-[calc(100vh-140px)] min-h-[550px]">
               {/* SVG Map Canvas */}
-              <div className="xl:col-span-3 rounded-xl border border-[#1e1e2e] bg-[#0d0f1a] relative overflow-hidden flex flex-col">
+              <div className="optimization-map rounded-xl border border-[#1e1e2e] bg-[#0d0f1a] relative overflow-hidden flex flex-col">
                 <div className="absolute top-3 left-3 z-10 flex items-center gap-2">
                   <div className="px-2.5 py-1 rounded-full text-[11px] font-mono bg-[#111118]/90 border border-[#1e1e2e] text-white flex items-center gap-1.5 backdrop-blur shadow-md">
                     <span>{scaledNb.length} Demand Nodes</span>
@@ -649,8 +641,8 @@ export function OptimizationWorkspace() {
               </div>
 
               {/* Right KPI Summary Sidebar */}
-              <div className="xl:col-span-1 space-y-4 flex flex-col justify-between">
-                <Card>
+              <div className="optimization-results space-y-4 flex flex-col justify-between">
+                <Card className="results-panel">
                   <CardHeader><span className="text-xs font-semibold text-white uppercase tracking-wider font-mono">Plan Performance</span></CardHeader>
                   <CardBody className="space-y-3">
                     {result ? (
