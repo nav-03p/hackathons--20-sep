@@ -54,30 +54,50 @@ function runExpansion(N0, C0, P, X, runWlopt){
     return s+(e?e.capacityTo:(capById[id]||0));
   },0);
   const unmetBefore=Math.max(0, grownDemandTotal-capAfterOpen);
-  if(pts.length && (expansions.length || (base.unserved||[]).length)){
-    const med=year.medianOf(pts);
-    let x=med.x, y=med.y;
-    // jitter away if we landed on top of an existing candidate site
-    const near=C0.find(function(c){ return Math.hypot(c.x-x,c.y-y)<4; });
-    if(near){
-      x=Math.min(98, Math.max(2, x+(x>=near.x?6:-6)));
-      y=Math.min(98, Math.max(2, y+(y>=near.y?6:-6)));
-    }
-    const need=pts.reduce(function(s,p){ return s+p.w; },0)*(X.buffer!=null?X.buffer:1.2);
-    proposal={id:'NEW1', name:'Proposed Hub', x:+x.toFixed(2), y:+y.toFixed(2),
-      capacity:round100(need), fixedCost:X.newFixedCost!=null?X.newFixedCost:1500,
-      catchment:pts.length,
-      note:'Demand-weighted geometric median of '+pts.length+' stressed areas (Weiszfeld)'};
-  }
 
-  // 4) re-optimize with expanded capacities + the proposed site available
+  // 3)+4) iterative greenfield siting: after capacity boosts, each round
+  // re-optimizes, finds the REMAINING stressed catchment (unserved areas +
+  // areas on hubs still over threshold) and proposes the next new warehouse
+  // at its demand-weighted geometric median — until healthy or cap reached.
+  const maxNew=X.maxNewWarehouses!=null?X.maxNewWarehouses:2;
+  const proposals=[];
   let C1=C0.map(function(c){
     const e=expansions.find(function(x){ return x.id===c.id; });
     return e?Object.assign({},c,{capacity:e.capacityTo}):c;
   });
-  if(proposal) C1=C1.concat([Object.assign({},proposal)]);
-  const P2=Object.assign({},P,{maxWarehouses:(P.maxWarehouses||3)+(proposal?1:0)});
-  const fin=runWlopt({neighborhoods:N, candidates:C1, params:P2, mode:'optimize'});
+  let fin=runWlopt({neighborhoods:N, candidates:C1,
+    params:Object.assign({},P,{maxWarehouses:(P.maxWarehouses||3)+proposals.length}), mode:'optimize'});
+  for(let k=0;k<maxNew;k++){
+    const utilById={}; (fin.utilization||[]).forEach(function(u){ utilById[u.id]=u.u; });
+    const healthy=(fin.unserved||[]).length===0 &&
+      (fin.openWarehouses||[]).every(function(id){ return (utilById[id]||0)<thr; });
+    if(healthy) break;
+    const asg=Array.isArray(fin.assignments)?fin.assignments:[];
+    const hotIds={}; (fin.openWarehouses||[]).forEach(function(id){
+      if((utilById[id]||0)>=thr) hotIds[id]=true; });
+    const pts2=N.filter(function(n){
+      const a=asg.find(function(a2){ return a2.neighborhoodId===n.id; });
+      return (fin.unserved||[]).indexOf(n.id)>=0||(a&&hotIds[a.warehouseId]);
+    }).map(function(n){ return {x:n.x, y:n.y, w:n.demand}; });
+    if(!pts2.length) break;
+    const med=year.medianOf(pts2);
+    let x=med.x, y=med.y;
+    const near=C1.find(function(c){ return Math.hypot(c.x-x,c.y-y)<4; });
+    if(near){
+      x=Math.min(98, Math.max(2, x+(x>=near.x?6:-6)));
+      y=Math.min(98, Math.max(2, y+(y>=near.y?6:-6)));
+    }
+    const need=pts2.reduce(function(s,p){ return s+p.w; },0)*(X.buffer!=null?X.buffer:1.2);
+    const pr={id:'NEW'+(k+1), name:'Proposed Hub '+(k+1), x:+x.toFixed(2), y:+y.toFixed(2),
+      capacity:round100(need), fixedCost:X.newFixedCost!=null?X.newFixedCost:1500,
+      catchment:pts2.length,
+      note:'Demand-weighted geometric median of '+pts2.length+' stressed areas (Weiszfeld, round '+(k+1)+')'};
+    proposals.push(pr);
+    C1=C1.concat([Object.assign({},pr)]);
+    fin=runWlopt({neighborhoods:N, candidates:C1,
+      params:Object.assign({},P,{maxWarehouses:(P.maxWarehouses||3)+proposals.length}), mode:'optimize'});
+  }
+  proposal=proposals[0]||null;
   const finMaxUtil = Math.max(0,(fin.utilization||[]).map(function(u){return u.u;})
     .reduce(function(a,b){ return Math.max(a,b); },0));
   const capAfterFin=(fin.openWarehouses||[]).reduce(function(s,id){
@@ -86,22 +106,40 @@ function runExpansion(N0, C0, P, X, runWlopt){
   },0);
 
   const saved=Math.max(0, (base.totalCost||0)-(fin.totalCost||0));
-  const paybackDays = saved>0 && proposal ? Math.max(1, Math.round(proposal.fixedCost*12/saved)) : null;
+  const totalNewFixed=proposals.reduce(function(s,p){ return s+p.fixedCost; },0);
+  const paybackDays = saved>0 && totalNewFixed>0 ? Math.max(1, Math.round(totalNewFixed*12/saved)) : null;
+
+  // stored per-warehouse demand content (feeds UI bars + LLM context)
+  const capOf=function(id){ const c=C1.find(function(x){ return x.id===id; }); return (c&&c.capacity)||0; };
+  const nameOf=function(id){ const c=C0.find(function(x){ return x.id===id; }); return (c&&c.name)||id; };
+  const grownDemand={}; N.forEach(function(n){ grownDemand[n.id]=n.demand; });
 
   return {growthPct:growthPct, utilThreshold:thr, grownDemandTotal:grownDemandTotal,
+    grownDemand:grownDemand,
     base:{openWarehouses:base.openWarehouses, utilization:base.utilization,
       unserved:base.unserved, totalCost:base.totalCost, maxUtil:+baseMaxUtil.toFixed(3),
-      capacityViolations:base.capacityViolations},
-    expansions:expansions, proposal:proposal,
+      capacityViolations:base.capacityViolations,
+      warehouseLoads:(base.openWarehouses||[]).map(function(id){
+        const u=(base.utilization||[]).find(function(u2){ return u2.id===id; });
+        const uu=u?u.u:0;
+        return {id:id, name:nameOf(id), load:Math.round(uu*((C0.find(function(c){return c.id===id;})||{}).capacity||0)),
+          capacity:(C0.find(function(c){return c.id===id;})||{}).capacity||0, util:+uu.toFixed(3)};
+      })},
+    expansions:expansions, proposal:proposal, proposals:proposals,
     final:{openWarehouses:fin.openWarehouses, utilization:fin.utilization,
       unserved:fin.unserved, totalCost:fin.totalCost, maxUtil:+finMaxUtil.toFixed(3),
-      assignments:fin.assignments},
+      assignments:fin.assignments,
+      warehouseLoads:(fin.openWarehouses||[]).map(function(id){
+        const u=(fin.utilization||[]).find(function(u2){ return u2.id===id; });
+        const uu=u?u.u:0;
+        return {id:id, name:nameOf(id), load:Math.round(uu*capOf(id)), capacity:capOf(id), util:+uu.toFixed(3)};
+      })},
     savings:{savedPerPeriod:Math.round(saved),
       unmetBefore:Math.min(grownDemandTotal, unmetBefore),
       unmetAfter:Math.max(0, grownDemandTotal-capAfterFin),
       unservedBefore:(base.unserved||[]).length, unservedAfter:(fin.unserved||[]).length,
       paybackDays:paybackDays},
-    stats:{newSiteFixed:proposal?proposal.fixedCost:0,
+    stats:{newSiteFixed:totalNewFixed,
       expansionUnits:expansions.reduce(function(s,e){ return s+e.addUnits; },0)}};
 }
 
@@ -117,12 +155,18 @@ function templateSummary(o){
   } else {
     L.push('No existing hub crosses the utilization threshold — capacity is sufficient for this growth.');
   }
-  if(o.proposal){
-    L.push('Open new warehouse '+o.proposal.id+' @('+o.proposal.x+', '+o.proposal.y+') with capacity '+
-      o.proposal.capacity+' — demand-weighted geometric median of the '+o.proposal.catchment+
-      ' stressed areas minimizes total weighted distance.');
+  const props=o.proposals&&o.proposals.length?o.proposals:(o.proposal?[o.proposal]:[]);
+  if(props.length){
+    L.push('Open '+props.length+' new warehouse'+(props.length>1?'s':'')+': '+
+      props.map(function(p){ return p.id+' @('+p.x+', '+p.y+') cap '+p.capacity; }).join('; ')+
+      ' — demand-weighted geometric medians of the stressed areas, computed from the data.');
   } else {
     L.push('No new site needed: expanding existing hubs covers the whole growth scenario.');
+  }
+  const fl=(o.final&&o.final.warehouseLoads)||[];
+  if(fl.length){
+    L.push('Final loads: '+fl.map(function(w){
+      return w.name+' '+w.load+'/'+w.capacity+' ('+Math.round(w.util*100)+'%)'; }).join(', ')+'.');
   }
   L.push('Re-optimized network: ['+(o.final.openWarehouses||[]).join(', ')+'] — peak utilization drops '+
     Math.round((o.base.maxUtil||0)*100)+'% → '+Math.round((o.final.maxUtil||0)*100)+'%.');
@@ -149,12 +193,13 @@ function llmSummarize(o, cb, attempt){
   if(!envdb){ giveup('template (no envdb)'); return; }
   const data={growthPct:o.growthPct, grownDemandTotal:o.grownDemandTotal,
     base:{open:o.base.openWarehouses, maxUtil:o.base.maxUtil, unserved:(o.base.unserved||[]).length,
-      totalCost:o.base.totalCost},
-    expansions:o.expansions, proposal:o.proposal,
+      totalCost:o.base.totalCost, warehouseLoads:o.base.warehouseLoads},
+    expansions:o.expansions, proposals:o.proposals,
     final:{open:o.final.openWarehouses, maxUtil:o.final.maxUtil,
-      unserved:(o.final.unserved||[]).length, totalCost:o.final.totalCost},
+      unserved:(o.final.unserved||[]).length, totalCost:o.final.totalCost,
+      warehouseLoads:o.final.warehouseLoads},
     savings:o.savings};
-  envdb.llmChat([{role:'user', content:'You are a logistics OR engineer. Give an executive summary in 6-8 short punchy lines for a hackathon demo of this demand-growth expansion plan. Cover: how much demand grew, which existing warehouses to expand and by how much (with before/after utilization), where a new warehouse should open and why (geometric median of stressed areas), the re-optimized network, utilization/unserved improvement, cost saved and payback. Data: '+JSON.stringify(data).slice(0,4000)}])
+  envdb.llmChat([{role:'user', content:'You are a logistics OR engineer. Give an executive summary in 6-8 short punchy lines for a hackathon demo of this demand-growth expansion plan. Cover: how much demand grew, which existing warehouses to expand and by how much (with before/after utilization and loads), the exact coordinates where each new warehouse should open and why (geometric median of stressed areas), the re-optimized network, utilization/unserved improvement, cost saved and payback. Data: '+JSON.stringify(data).slice(0,4000)}])
     .then(function(r){
       const txt=(r&&r.ok&&r.text)?r.text:'';
       // quality gate: free-tier models sometimes emit junk one-liners
@@ -175,5 +220,65 @@ function llmSummarize(o, cb, attempt){
     });
 }
 
-module.exports={runExpansion:runExpansion, templateSummary:templateSummary, llmSummarize:llmSummarize};
+// Demand-simulation narrator: what the condition WILL be and what to do.
+// Data-driven from the Monte Carlo result + expected-demand network run.
+function templateSimSummary(o){
+  const L=[];
+  const net=o.expectedNetwork||{};
+  const vol=o.expectedTotal?((o.p90/o.expectedTotal-1)*100):0;
+  L.push('Condition at +'+o.growthPct+'% demand ('+o.dist+' noise, CV '+Math.round((o.cv||0)*100)+
+    '%): expected daily cost $'+Math.round(o.expectedTotal||0)+', P90 $'+Math.round(o.p90||0)+
+    ' (+'+vol.toFixed(0)+'% tail risk), worst case $'+Math.round(o.worst||0)+'.');
+  const wl=net.warehouseLoads||[];
+  if(wl.length){
+    L.push('Expected network ('+wl.length+' hubs): '+wl.map(function(w){
+      return w.name+' '+w.load+'/'+w.capacity+' ('+Math.round(w.util*100)+'%)'; }).join(', ')+'.');
+  }
+  const hot=wl.filter(function(w){ return w.util>=0.85; });
+  if(hot.length){
+    L.push('What to do: '+hot.map(function(w){
+      return 'expand '+w.name+' by '+Math.max(100,Math.ceil((w.load/0.85-w.capacity)/100)*100)+
+        ' units ('+Math.round(w.util*100)+'% full)'; }).join('; ')+'.');
+  } else {
+    L.push('What to do: no hub crosses the 85% stress line — current network absorbs this growth.');
+  }
+  if((net.unserved||[]).length){
+    L.push('Unserved areas appear ('+net.unserved.length+'): open an extra hub near the unserved cluster — '+
+      'run the Expansion Advisor for exact data-computed coordinates.');
+  }
+  L.push('Volatility: '+o.samples+' scenarios, best $'+Math.round(o.best||0)+' vs worst $'+
+    Math.round(o.worst||0)+' — keep safety stock and flexible fleet for the P90 tail.');
+  L.push('Recommendation: re-run this simulation at +'+Math.round((o.growthPct||0)+15)+
+    '% to see when the network tips over, and pre-secure the expansion sites early.');
+  return L;
+}
+
+function narrateSim(o, cb, attempt){
+  attempt=attempt||1;
+  let envdb=null; try{ envdb=require('./envdb.js'); }catch(e){}
+  const fb=templateSimSummary(o);
+  const giveup=function(via){ cb(null,{text:fb.join('\n'), via:via}); };
+  if(!envdb){ giveup('template (no envdb)'); return; }
+  const data={growthPct:o.growthPct, dist:o.dist, cv:o.cv, samples:o.samples,
+    expectedTotal:o.expectedTotal, p90:o.p90, worst:o.worst, best:o.best,
+    expectedNetwork:{open:o.expectedNetwork&&o.expectedNetwork.openWarehouses,
+      warehouseLoads:o.expectedNetwork&&o.expectedNetwork.warehouseLoads,
+      unserved:o.expectedNetwork&&o.expectedNetwork.unserved}};
+  envdb.llmChat([{role:'user', content:'You are a logistics OR engineer. In 6-8 short punchy lines, describe for a hackathon demo what the network condition WILL BE under this simulated demand growth (expected cost, P90 tail risk, per-warehouse load/utilization) and exactly WHAT TO DO (which hubs to expand by how much, whether/where to add a hub, stock flexibility). Use only the data. Data: '+JSON.stringify(data).slice(0,4000)}])
+    .then(function(r){
+      const txt=(r&&r.ok&&r.text)?r.text:'';
+      const good=txt.trim().length>=200&&txt.split(/\n+/).filter(function(l){return l.trim();}).length>=3;
+      if(good) cb(null,{text:txt, via:'llm:'+(process.env.OPENROUTER_MODEL||process.env.LLM_MODEL||'default')});
+      else if(attempt<2) setTimeout(function(){ narrateSim(o, cb, attempt+1); },1200);
+      else if(r&&r.noKey) giveup('template (no LLM key)');
+      else giveup('template (llm unavailable)');
+    })
+    .catch(function(){
+      if(attempt<2) setTimeout(function(){ narrateSim(o, cb, attempt+1); },1200);
+      else giveup('template (llm error)');
+    });
+}
+
+module.exports={runExpansion:runExpansion, templateSummary:templateSummary, llmSummarize:llmSummarize,
+  templateSimSummary:templateSimSummary, narrateSim:narrateSim};
 

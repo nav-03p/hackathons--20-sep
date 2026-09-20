@@ -257,6 +257,33 @@ const server = http.createServer(function(req,res){
         algorithm:(b.params&&b.params.algorithm)||'auto', warehouse_count:out.openWarehouses.length,
         total_cost:Math.round(out.totalCost), avg_distance:+out.avgDistance.toFixed(2), runtime_ms:Math.round(out.runtimeMs)}); }catch(e){}
       try{ const log=JSON.parse('[]'); }catch(e){}
+      if(u.pathname==='/api/simulate'){
+        // expected-demand network: per-warehouse loads + condition narration
+        try{
+          const gm=out.growthMult||1;
+          const Ng=(b.neighborhoods||[]).map(function(n){
+            return {id:n.id,x:n.x,y:n.y,demand:Math.max(1,Math.round((n.demand||0)*gm))}; });
+          const net=runWlopt({neighborhoods:Ng, candidates:b.candidates,
+            params:b.params||{}, mode:'optimize'});
+          const caps={}; (b.candidates||[]).forEach(function(c){ caps[c.id]=c.capacity; });
+          out.expectedNetwork={
+            openWarehouses:net.openWarehouses, unserved:net.unserved,
+            totalCost:net.totalCost,
+            warehouseLoads:(net.utilization||[]).map(function(u){
+              const c=(b.candidates||[]).find(function(x){ return x.id===u.id; });
+              return {id:u.id, name:(c&&c.name)||u.id,
+                load:Math.round(u.u*(caps[u.id]||0)), capacity:caps[u.id]||0, util:+u.u.toFixed(3)};
+            })};
+          out.grownDemand=Ng.reduce(function(m,n){ m[n.id]=n.demand; return m; },{});
+        }catch(e){ out.expectedNetwork=null; }
+        out.growthPct=Math.round(((out.growthMult||1)-1)*100);
+        expansion.narrateSim(out, function(err2, nr){
+          out.summary=(nr&&nr.text)?nr.text.split(/\n+/).filter(function(l){return l.trim();}):[];
+          out.narrVia=(nr&&nr.via)||'template';
+          send(res,200,out);
+        });
+        return;
+      }
       send(res,200,out); return;
     }
     if(req.method==='POST' && u.pathname==='/api/year'){
@@ -277,17 +304,13 @@ const server = http.createServer(function(req,res){
         litresPerKm:0.12,fuelPrice:1.5}, b.year||{});
       const o=year.runYear(b.neighborhoods,b.candidates,P,Y,runWlopt);
       o.year=Y; o.params=P;
-      // narration: try LLM if key set, else template (async-safe, fast path sync)
-      if(process.env.OPENAI_API_KEY||process.env.LLM_API_KEY){
-        year.llmNarrate(o, function(err, narr){
-          o.narration = (narr&&narr.text? [narr.text] : year.templateNarr(o));
-          o.narrVia = (narr&&narr.via) || 'template';
-          send(res,200,o);
-        });
-      } else {
-        o.narration=year.templateNarr(o); o.narrVia='template (no LLM key)';
+      // narration: LLM (OpenRouter/OpenAI-compatible) with template fallback +
+      // retry + quality gate — coordinates always come from the data, not text.
+      year.llmNarrate(o, function(err, narr){
+        o.narration = (narr&&narr.text? [narr.text] : year.templateNarr(o));
+        o.narrVia = (narr&&narr.via) || 'template';
         send(res,200,o);
-      }
+      });
       return;
     }
     if(req.method==='POST' && u.pathname==='/api/narrate'){

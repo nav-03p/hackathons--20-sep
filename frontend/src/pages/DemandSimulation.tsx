@@ -237,8 +237,56 @@ export function DemandSimulation() {
               })}
             </CardBody>
           </Card>
+
+          {/* Warehouse demand & load at grown demand */}
+          {result?.expectedNetwork && (
+            <Card>
+              <CardHeader><span className="text-sm font-medium text-white">Warehouse Demand &amp; Load (+{result.growthPct ?? growth}% expected demand)</span></CardHeader>
+              <CardBody className="space-y-3">
+                {(result.expectedNetwork.warehouseLoads || []).map(w => (
+                  <div key={w.id} className="flex items-center gap-3">
+                    <div className="w-28 text-xs text-[#5a5a70] truncate">{w.name}</div>
+                    <div className="flex-1 h-6 bg-[#0d0d16] rounded overflow-hidden flex">
+                      <div
+                        className={`h-full transition-all ${w.util > 0.9 ? 'bg-red-500' : w.util > 0.75 ? 'bg-amber-500' : 'bg-emerald-500'}`}
+                        style={{ width: `${Math.min(100, Math.max(0, (w.load / Math.max(1, w.capacity)) * 100))}%` }}
+                      />
+                    </div>
+                    <div className="w-32 text-right font-mono text-xs text-white">{w.load} / {w.capacity} · {Math.round(w.util * 100)}%</div>
+                  </div>
+                ))}
+                {(result.expectedNetwork.unserved || []).length > 0 && (
+                  <div className="text-xs text-red-400 flex items-center gap-1.5">
+                    <AlertTriangle size={12} /> {result.expectedNetwork.unserved.length} areas would go unserved at this growth — consider the Expansion Advisor.
+                  </div>
+                )}
+              </CardBody>
+            </Card>
+          )}
         </div>
       </div>
+
+      {/* AI insights: condition + what to do */}
+      {result?.summary && result.summary.length > 0 && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between w-full">
+              <span className="text-sm font-medium text-white flex items-center gap-1.5"><Info size={14} className="text-blue-400" /> AI Insights — Future Condition &amp; What To Do</span>
+              <Badge variant={result.narrVia?.startsWith('llm') ? 'info' : 'muted'}>{result.narrVia}</Badge>
+            </div>
+          </CardHeader>
+          <CardBody>
+            <ul className="space-y-2">
+              {result.summary.map((line, i) => (
+                <li key={i} className="text-xs text-[#c0c0d0] leading-relaxed flex items-start gap-2">
+                  <span className="text-blue-400 font-bold mt-0.5">•</span>
+                  <span>{line}</span>
+                </li>
+              ))}
+            </ul>
+          </CardBody>
+        </Card>
+      )}
 
       {err && (
         <div className="text-xs text-amber-400 bg-amber-500/5 p-3 rounded border border-amber-500/20">

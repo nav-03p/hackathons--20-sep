@@ -33,10 +33,14 @@ function medianOf(pts, iters){
 }
 
 function scaleDemand(base, day, Y, rng, noisy){
-  // expected growth: (1+g)^day, hotspot grows faster; weekly+annual seasonality
+  // expected growth: (1+g)^day. Growth is UNIFORM across all regions unless a
+  // hotspot is enabled — and the hotspot centre is always computed from THIS
+  // dataset (demand-weighted centroid, set in runYear), never static coords.
+  const hot=Y.hotspot, hotMult=(Y.hotspotMult!=null?Y.hotspotMult:1.0);
+  const rad=Y.hotspotRadius!=null?Y.hotspotRadius:30;
   return base.map(function(n){
-    const hot=(n.x>60&&n.y<45)?(Y.hotspotMult||1.6):1.0;
-    const g=(Y.dailyGrowthPct||0.12)/100*hot;
+    const inHot=hot&&hotMult>1&&euc(n.x,n.y,hot.x,hot.y)<=rad;
+    const g=(Y.dailyGrowthPct||0.12)/100*(inHot?hotMult:1.0);
     let f=Math.pow(1+g, day);
     f*=1+(Y.weeklyAmp!=null?Y.weeklyAmp:0.12)*Math.sin(2*Math.PI*day/7);
     f*=1+(Y.annualAmp!=null?Y.annualAmp:0.10)*Math.sin(2*Math.PI*day/365);
@@ -50,6 +54,14 @@ function scaleDemand(base, day, Y, rng, noisy){
 // monthly optimize + pressure: avg cost/day, util, km, daysLate proxy
 function runYear(N0, C0, P, Y, runWlopt){
   const months=Y.months||12, dayStep=Math.floor(365/months);
+  // hotspot centre derived from THIS dataset: demand-weighted centroid of the
+  // seed data (fully dynamic — changes with input/seed, no hardcoded region)
+  const sw=N0.reduce(function(a,n){return a+(n.demand||0);},0)||1;
+  if(!Y.hotspot){
+    Y.hotspot={x:+(N0.reduce(function(a,n){return a+n.x*(n.demand||0);},0)/sw).toFixed(2),
+               y:+(N0.reduce(function(a,n){return a+n.y*(n.demand||0);},0)/sw).toFixed(2)};
+  }
+  Y.hotspotMode=(Y.hotspotMult&&Y.hotspotMult>1)?'data-driven hotspot @('+Y.hotspot.x+','+Y.hotspot.y+')':'uniform (all regions grow equally)';
   const curve=[], monthSols=[];
   let totalYearBase=0, totalYearNew=null, firstPressure=null, proposal=null;
   let baseSolMonth0=null, newSolEnd=null;
@@ -92,25 +104,59 @@ function runYear(N0, C0, P, Y, runWlopt){
       avgKm:+bs.avgDistance.toFixed(2),open:bs.openWarehouses.slice()});
   }
 
-  // proposal: geometric median of the END-year demand (pressure-weighted)
+  // proposal(s): iterative greenfield siting — each round re-optimizes the
+  // end-year network, finds the STRESSED catchment (unserved areas + areas on
+  // hubs over the utilization threshold), and proposes a new warehouse at the
+  // demand-weighted geometric median of THAT catchment. Repeats until the
+  // network absorbs the grown demand or the new-site cap is reached.
+  // Coordinates are always computed from the data — never static.
   const Nend=scaleDemand(N0, 364, Y, null, false);
   const totD=Nend.reduce(function(a,n){return a+n.demand;},0);
-  const med=medianOf(Nend.map(function(n){return {x:n.x,y:n.y,w:n.demand};}));
-  const nid='W-NEW';
-  const newCap=Y.newCapacity!=null?Y.newCapacity:Math.round(totD*0.35);
   const newFix=Y.newFixedCost!=null?Y.newFixedCost:1500;
+  const thr=Y.utilThreshold!=null?Y.utilThreshold:0.85;
+  const maxNew=Y.maxNewWarehouses!=null?Y.maxNewWarehouses:2;
+  const proposals=[]; let C1=C0.slice();
+  for(let k=0;k<maxNew;k++){
+    const sol=runWlopt({neighborhoods:Nend,candidates:C1,
+      params:Object.assign({},P,{maxWarehouses:(P.maxWarehouses||3)+proposals.length}),mode:'optimize'});
+    const healthy=(sol.unserved||[]).length===0 &&
+      (sol.utilization||[]).every(function(u){return u.u<thr;});
+    if(healthy) break;
+    const utilById={}; (sol.utilization||[]).forEach(function(u){utilById[u.id]=u.u;});
+    const hotIds={}; (sol.openWarehouses||[]).forEach(function(id){
+      if((utilById[id]||0)>=thr) hotIds[id]=true; });
+    const pts=Nend.filter(function(n){
+      const a=(sol.assignments||[]).find(function(a2){return a2.neighborhoodId===n.id;});
+      return (sol.unserved||[]).indexOf(n.id)>=0||(a&&hotIds[a.warehouseId]);
+    }).map(function(n){return {x:n.x,y:n.y,w:n.demand};});
+    if(!pts.length) break;
+    const med=medianOf(pts);
+    let x=med.x,y=med.y;
+    const near=C1.find(function(c){ return euc(c.x,c.y,x,y)<4; });
+    if(near){
+      x=+Math.min(98,Math.max(2,x+(x>=near.x?6:-6))).toFixed(2);
+      y=+Math.min(98,Math.max(2,y+(y>=near.y?6:-6))).toFixed(2);
+    }
+    const cap=Y.newCapacity!=null?Y.newCapacity:
+      Math.max(100,Math.round(pts.reduce(function(s,p){return s+p.w;},0)*1.2/100)*100);
+    proposals.push({id:(k===0?'W-NEW':'W-NEW'+(k+1)),x:x,y:y,lat:x,lng:y,
+      fixedCost:newFix,capacity:cap,catchment:pts.length,
+      note:'computed from data: demand-weighted geometric median of '+pts.length+
+        ' stressed areas (round '+(k+1)+')'});
+    C1=C1.concat([proposals[proposals.length-1]]);
+  }
+  if(!proposals.length){
+    // network already healthy at end-year demand — still surface the median site
+    const med=medianOf(Nend.map(function(n){return {x:n.x,y:n.y,w:n.demand};}));
+    proposals.push({id:'W-NEW',x:med.x,y:med.y,lat:med.x,lng:med.y,fixedCost:newFix,
+      capacity:Y.newCapacity!=null?Y.newCapacity:Math.round(totD*0.35),
+      catchment:Nend.length,note:'demand-weighted geometric median of day-365 demand (network already healthy)'});
+  }
+  proposal=proposals[0];
 
-  // avoid proposing on top of existing candidate (snap check)
-  let clash=null;
-  C0.forEach(function(c){ if(euc(c.x,c.y,med.x,med.y)<4) clash=c.id; });
-  proposal={id:nid,x:med.x,y:med.y,lat:med.x,lng:med.y,fixedCost:newFix,capacity:newCap,
-    note: clash?('median snapped near existing '+clash+' — still added as extra dock'):
-      'placed at demand-weighted geometric median of day-365 demand'};
-  const C1=C0.concat([proposal]);
-
-  // reconnect: re-optimize end-year with new warehouse; wire month-0..end stays base
+  // reconnect: re-optimize end-year with all new warehouses; wire month-0..end stays base
   newSolEnd=runWlopt({neighborhoods:Nend,candidates:C1,
-    params:Object.assign({},P,{maxWarehouses:(P.maxWarehouses||3)+1}),mode:'optimize'});
+    params:Object.assign({},P,{maxWarehouses:(P.maxWarehouses||3)+proposals.length}),mode:'optimize'});
 
   // whole-year counterfactual: with new warehouse available from pressure onset
   let tyNew=0; const curveNew=[];
@@ -118,7 +164,7 @@ function runYear(N0, C0, P, Y, runWlopt){
     const day=mI*dayStep;
     const Nm=scaleDemand(N0, day, Y, null, false);
     const s=runWlopt({neighborhoods:Nm,candidates:C1,
-      params:Object.assign({},P,{maxWarehouses:(P.maxWarehouses||3)+1}),mode:'optimize'});
+      params:Object.assign({},P,{maxWarehouses:(P.maxWarehouses||3)+proposals.length}),mode:'optimize'});
     const daysInM=(mI===months-1)?365-day:dayStep;
     const unservedCount = (s.unserved||[]).length;
     const dayCost = s.totalCost + (unservedCount * 25);
@@ -156,6 +202,7 @@ function runYear(N0, C0, P, Y, runWlopt){
 
   return {curve:curve,curveNew:curveNew,baseSolMonth0:baseSolMonth0,
     newSolEnd:newSolEnd,firstPressure:firstPressure,proposal:proposal,
+    proposals:proposals,
     totalYearBase:totalYearBase,totalYearNew:totalYearNew,saved:saved,
     stats:{money:money,kmSaved:kmSaved,driveHrsSaved:timeHrs,
       labourSaved:labour,fuelSaved:fuel}};
@@ -170,8 +217,11 @@ function templateNarr(o){
   if(pr) L.push('Pressure starts month '+pr.month+' (day '+pr.day+'): peak utilization '+
     Math.round(pr.maxUtil*100)+'%, '+pr.unserved+' unserved, avg '+pr.avgKm+' km.');
   else L.push('No hard pressure this year (utilization stays under threshold).');
-  L.push('New warehouse '+o.proposal.id+' @('+o.proposal.x+','+o.proposal.y+'), cap '+
-    o.proposal.capacity+', fixed $'+o.proposal.fixedCost+'. '+o.proposal.note+'.');
+  (o.proposals&&o.proposals.length?o.proposals:[o.proposal]).forEach(function(p,i){
+    if(!p) return;
+    L.push('New warehouse '+(i+1)+' '+p.id+' @('+p.x+', '+p.y+'), cap '+
+      p.capacity+', fixed $'+p.fixedCost+'. '+p.note+'.');
+  });
   L.push('Reconnect at year-end: ['+o.newSolEnd.openWarehouses.join(', ')+
     '] vs base ['+o.baseSolMonth0.openWarehouses.join(', ')+'].');
   L.push('Money: base year $'+Math.round(o.totalYearBase)+
@@ -185,20 +235,31 @@ function templateNarr(o){
     'extra dock absorbs the overloaded region the pressure report flagged.');
   return L;
 }
-function llmNarrate(payload, cb){
+function llmNarrate(payload, cb, attempt){
+  attempt=attempt||1;
   const fallback=require('./yearsim_fb.js');
   let envdb=null; try{ envdb=require('./envdb.js'); }catch(e){}
   const fb=fallback.templateNarr(payload);
-  if(!envdb){ cb(null,{text:fb.join('\n'),via:'template (no LLM key)'}); return; }
+  const giveup=function(via){ cb(null,{text:fb.join('\n'),via:via}); };
+  if(!envdb){ giveup('template (no LLM key)'); return; }
   const summary={pressure:payload.firstPressure,proposal:payload.proposal,
+    proposals:payload.proposals,
     base:(payload.baseSolMonth0||{}).openWarehouses,end:(payload.newSolEnd||{}).openWarehouses,
     money:(payload.stats||{}).money,ops:{km:(payload.stats||{}).kmSaved,hrs:(payload.stats||{}).driveHrsSaved,
     labour:(payload.stats||{}).labourSaved,fuel:(payload.stats||{}).fuelSaved}};
-  envdb.llmChat([{role:'user',content:'You are a logistics OR engineer. Explain this warehouse-year plan in 8 short punchy lines for a hackathon demo. Cover: where pressure appears, where the new warehouse goes and why (geometric median), reconnections, money/time/labour/fuel saved, payback. Data: '+JSON.stringify(summary).slice(0,4000)}])
+  envdb.llmChat([{role:'user',content:'You are a logistics OR engineer. Explain this warehouse-year plan in 8 short punchy lines for a hackathon demo. Cover: where pressure appears, the exact coordinates where each new warehouse should open and why (demand-weighted geometric median of the stressed catchment), reconnections, money/time/labour/fuel saved, payback. Data: '+JSON.stringify(summary).slice(0,4000)}])
     .then(function(r){
-      if(r&&r.ok&&r.text) cb(null,{text:r.text,via:'openrouter:'+(process.env.OPENROUTER_MODEL||process.env.LLM_MODEL||'gpt-4o-mini')});
-      else if(r&&r.noKey) cb(null,{text:fb.join('\n'),via:'template (no LLM key)'});
-      else cb(null,{text:fb.join('\n'),via:'template (llm unavailable)'});
+      const txt=(r&&r.ok&&r.text)?r.text:'';
+      // quality gate: free-tier routers sometimes emit junk — retry then template
+      const good=txt.trim().length>=200&&txt.split(/\n+/).filter(function(l){return l.trim();}).length>=3;
+      if(good) cb(null,{text:txt,via:'openrouter:'+(process.env.OPENROUTER_MODEL||process.env.LLM_MODEL||'gpt-4o-mini')});
+      else if(attempt<2) setTimeout(function(){ llmNarrate(payload,cb,attempt+1); },1200);
+      else if(r&&r.noKey) giveup('template (no LLM key)');
+      else giveup('template (llm unavailable)');
+    })
+    .catch(function(){
+      if(attempt<2) setTimeout(function(){ llmNarrate(payload,cb,attempt+1); },1200);
+      else giveup('template (llm error)');
     });
 }
 module.exports={runYear:runYear,scaleDemand:scaleDemand,medianOf:medianOf,

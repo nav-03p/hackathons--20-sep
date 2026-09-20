@@ -937,6 +937,9 @@ export function OptimizationWorkspace() {
                     <Button variant="primary" size="sm" className="w-full" loading={expRunning} onClick={runExpansion}>
                       {expRunning ? <><Loader2 size={13} className="animate-spin" /> Analyzing…</> : <><TrendingUp size={13} /> Recommend Expansion Plan</>}
                     </Button>
+                    <div className="text-[10px] text-[#4a4a60] text-center font-mono">
+                      solver: {algo === 'median' ? 'localsearch' : algo} · computed from your data &amp; seed
+                    </div>
                     {expRes && (
                       <div className="pt-2 border-t border-[#1e1e2e] space-y-1.5 text-xs">
                         <div className="flex justify-between"><span className="text-[#5a5a70]">Grown demand</span><span className="font-mono text-white">{expRes.grownDemandTotal}/day</span></div>
@@ -963,20 +966,18 @@ export function OptimizationWorkspace() {
                           </div>
                         </div>
                       ))}
-                      {expRes.proposal && (
-                        <div className="p-2.5 rounded-lg bg-violet-500/5 border border-violet-500/20">
+                      {(expRes.proposals && expRes.proposals.length ? expRes.proposals : (expRes.proposal ? [expRes.proposal] : [])).map(p => (
+                        <div key={p.id} className="p-2.5 rounded-lg bg-violet-500/5 border border-violet-500/20">
                           <div className="flex items-center justify-between text-xs">
-                            <span className="font-medium text-violet-300 flex items-center gap-1.5"><MapPin size={12} /> Open {expRes.proposal.id}</span>
-                            <span className="font-mono text-violet-300">cap {expRes.proposal.capacity}</span>
+                            <span className="font-medium text-violet-300 flex items-center gap-1.5"><MapPin size={12} /> Open {p.id}</span>
+                            <span className="font-mono text-violet-300">cap {p.capacity}</span>
                           </div>
                           <div className="text-[10px] text-[#8080a0] mt-1 font-mono">
-                            @ ({expRes.proposal.x}, {expRes.proposal.y}) · setup {fmtCurrency(expRes.proposal.fixedCost)} · covers {expRes.proposal.catchment} stressed areas
+                            @ ({p.x}, {p.y}) · setup {fmtCurrency(p.fixedCost)} · covers {p.catchment} stressed areas
                           </div>
-                          {expRes.savings.paybackDays != null && (
-                            <div className="text-[10px] text-emerald-400 mt-1">Payback ~{expRes.savings.paybackDays} days</div>
-                          )}
+                          {p.note && <div className="text-[10px] text-[#4a4a60] mt-0.5">{p.note}</div>}
                         </div>
-                      )}
+                      ))}
                       {!expRes.proposal && expRes.expansions.length === 0 && (
                         <div className="text-xs text-emerald-400 flex items-center gap-1.5"><CheckCircle2 size={13} /> No expansion needed at this growth level.</div>
                       )}
@@ -1070,7 +1071,10 @@ function WloMapSVG({
 }) {
   const xs = [...neighborhoods.map(n => n.x), ...warehouses.map(w => w.x)];
   const ys = [...neighborhoods.map(n => n.y), ...warehouses.map(w => w.y)];
-  if (expansion?.proposal) { xs.push(expansion.proposal.x); ys.push(expansion.proposal.y); }
+  const allProposals = expansion
+    ? (expansion.proposals && expansion.proposals.length ? expansion.proposals : (expansion.proposal ? [expansion.proposal] : []))
+    : [];
+  allProposals.forEach(p => { xs.push(p.x); ys.push(p.y); });
 
   const minX = xs.length ? Math.min(...xs) - 0.005 : 12.9;
   const maxX = xs.length ? Math.max(...xs) + 0.005 : 13.0;
@@ -1282,34 +1286,31 @@ function WloMapSVG({
               </g>
             );
           })}
-          {/* violet: proposed new warehouse + its catchment lines */}
-          {expansion.proposal && (() => {
-            const p = expansion.proposal;
-            return (
-              <g key="proposal">
-                {Object.entries(finalAsg).filter(([, wid]) => wid === p.id).map(([nid]) => {
-                  const n = neighborhoods.find(x => x.id === nid);
-                  if (!n) return null;
-                  return (
-                    <line key={`pl-${nid}`} x1={toX(n.x)} y1={toY(n.y)}
-                      x2={toX(p.x)} y2={toY(p.y)} stroke="#a78bfa" strokeWidth="1.2"
-                      strokeOpacity="0.5" strokeDasharray="2 3" />
-                  );
-                })}
-                <circle cx={toX(p.x)} cy={toY(p.y)} r={20}
-                  fill="#8b5cf6" fillOpacity="0.15" stroke="#a78bfa" strokeWidth="2" />
-                <rect x={toX(p.x) - 8} y={toY(p.y) - 3} width={16} height={8} rx={2} fill="#8b5cf6" />
-                <text x={toX(p.x)} y={toY(p.y) - 26} textAnchor="middle" fontSize="11"
-                  fontWeight="bold" fill="#c4b5fd" fontFamily="monospace">
-                  {p.id} · NEW
-                </text>
-                <text x={toX(p.x)} y={toY(p.y) + 34} textAnchor="middle" fontSize="9"
-                  fill="#a78bfa" fontFamily="monospace">
-                  cap {p.capacity}
-                </text>
-              </g>
-            );
-          })()}
+          {/* violet: proposed new warehouses + their catchment lines */}
+          {allProposals.map(p => (
+            <g key={'proposal-' + p.id}>
+              {Object.entries(finalAsg).filter(([, wid]) => wid === p.id).map(([nid]) => {
+                const n = neighborhoods.find(x => x.id === nid);
+                if (!n) return null;
+                return (
+                  <line key={`pl-${nid}`} x1={toX(n.x)} y1={toY(n.y)}
+                    x2={toX(p.x)} y2={toY(p.y)} stroke="#a78bfa" strokeWidth="1.2"
+                    strokeOpacity="0.5" strokeDasharray="2 3" />
+                );
+              })}
+              <circle cx={toX(p.x)} cy={toY(p.y)} r={20}
+                fill="#8b5cf6" fillOpacity="0.15" stroke="#a78bfa" strokeWidth="2" />
+              <rect x={toX(p.x) - 8} y={toY(p.y) - 3} width={16} height={8} rx={2} fill="#8b5cf6" />
+              <text x={toX(p.x)} y={toY(p.y) - 26} textAnchor="middle" fontSize="11"
+                fontWeight="bold" fill="#c4b5fd" fontFamily="monospace">
+                {p.id} · NEW
+              </text>
+              <text x={toX(p.x)} y={toY(p.y) + 34} textAnchor="middle" fontSize="9"
+                fill="#a78bfa" fontFamily="monospace">
+                cap {p.capacity}
+              </text>
+            </g>
+          ))}
         </>
       )}
     </svg>

@@ -140,6 +140,12 @@ export interface SimResult {
   distribution?: { cost: number; density: number }[];
   samples?: number;
   note?: string;
+  growthPct?: number;
+  growthMult?: number;
+  expectedNetwork?: { openWarehouses: string[]; unserved: string[]; totalCost: number; warehouseLoads: { id: string; name: string; load: number; capacity: number; util: number }[] } | null;
+  grownDemand?: Record<string, number>;
+  summary?: string[];
+  narrVia?: string;
 }
 
 export interface SensBody { neighborhoods: Point[]; candidates: Candidate[]; params?: Params; }
@@ -155,9 +161,10 @@ export interface ExpansionProposal {
 }
 export interface ExpansionResult {
   growthPct: number; utilThreshold: number; grownDemandTotal: number;
-  base: { openWarehouses: string[]; utilization: { id: string; u: number }[]; unserved: string[]; totalCost: number; maxUtil: number; };
-  expansions: ExpansionAction[]; proposal: ExpansionProposal | null;
-  final: { openWarehouses: string[]; utilization: { id: string; u: number }[]; unserved: string[]; totalCost: number; maxUtil: number; assignments?: Record<string, string> | { neighborhoodId: string; warehouseId: string }[]; };
+  grownDemand?: Record<string, number>;
+  base: { openWarehouses: string[]; utilization: { id: string; u: number }[]; unserved: string[]; totalCost: number; maxUtil: number; warehouseLoads?: { id: string; name: string; load: number; capacity: number; util: number }[]; };
+  expansions: ExpansionAction[]; proposal: ExpansionProposal | null; proposals?: ExpansionProposal[];
+  final: { openWarehouses: string[]; utilization: { id: string; u: number }[]; unserved: string[]; totalCost: number; maxUtil: number; assignments?: Record<string, string> | { neighborhoodId: string; warehouseId: string }[]; warehouseLoads?: { id: string; name: string; load: number; capacity: number; util: number }[]; };
   savings: { savedPerPeriod: number; unmetBefore: number; unmetAfter: number; unservedBefore: number; unservedAfter: number; paybackDays: number | null };
   summary?: string[]; narrVia?: string;
 }
@@ -225,11 +232,16 @@ export interface YearCurveRowNew {
   open: string[];
 }
 
+export interface YearProposal { id: string; x: number; y: number; lat?: number; lng?: number; fixedCost: number; capacity: number; catchment?: number; note: string; }
+
 export interface YearResult {
   baseSolMonth0: OptResult;
   newSolEnd: OptResult;
   firstPressure: { month: number; day: number; maxUtil: number; unserved: number; avgKm: number } | null;
-  proposal: { id: string; x: number; y: number; fixedCost: number; capacity: number; note: string } | null;
+  proposal: YearProposal | null;
+  proposals?: YearProposal[];
+  hotspot?: { x: number; y: number };
+  hotspotMode?: string;
   stats: {
     money: { deliverySaved: number; yearBase: number; yearNew: number; avgDaySave: number; paybackDays: number };
     kmSaved: number;

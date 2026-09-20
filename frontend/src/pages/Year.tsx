@@ -327,10 +327,14 @@ export function Year() {
                   {(result.newSolEnd?.openWarehouses || []).map(w => (
                     <div key={w} className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />{w}</div>
                   ))}
-                  {prop && (
-                    <div className="mt-2 p-1.5 rounded bg-emerald-500/5 border border-emerald-500/20">
-                      <span className="text-emerald-400 font-mono">+{prop.id}</span> proposed at ({prop.x.toFixed(0)}, {prop.y.toFixed(0)})
+                  {(result.proposals && result.proposals.length ? result.proposals : (prop ? [prop] : [])).map(p => (
+                    <div key={p.id} className="mt-2 p-1.5 rounded bg-emerald-500/5 border border-emerald-500/20">
+                      <span className="text-emerald-400 font-mono">+{p.id}</span> @ ({p.x.toFixed(2)}, {p.y.toFixed(2)}) · cap {p.capacity}
+                      <div className="text-[10px] text-[#5a5a70] mt-0.5">{p.note}</div>
                     </div>
+                  ))}
+                  {result?.hotspotMode && (
+                    <div className="mt-2 text-[10px] text-[#5a5a70] font-mono">growth mode: {result.hotspotMode}</div>
                   )}
                 </div>
               </div>
