@@ -255,7 +255,7 @@ export function OptimizationWorkspace() {
   }) || [];
 
   return (
-    <div className="optimization-shell h-full min-h-0 flex flex-col overflow-hidden bg-[#0a0a0f]">
+    <div className="optimization-shell h-full min-h-0 flex flex-col overflow-visible bg-[#0a0a0f]">
       {/* Left Column: Controls & Configuration */}
       <div className="optimization-controls w-full flex-shrink-0 border-b border-[#1e1e2e] bg-[#0d0d16] flex flex-col overflow-visible">
         <div className="optimization-heading px-6 py-5 border-b border-[#1e1e2e]">
@@ -495,7 +495,7 @@ export function OptimizationWorkspace() {
       </div>
 
       {/* Main Center & Right Area */}
-      <div className="optimization-workspace flex-1 flex flex-col min-w-0 h-full overflow-hidden">
+      <div className="optimization-workspace flex-1 flex flex-col min-w-0 min-h-0">
         {/* Top View Switcher Tabs */}
         <div className="workspace-tabs h-14 border-b border-[#1e1e2e] bg-[#0d0d16] px-4 flex items-center justify-between flex-shrink-0">
           <div className="optimization-view-switcher flex items-center gap-2">
@@ -519,7 +519,7 @@ export function OptimizationWorkspace() {
         </div>
 
         {/* Tab Contents */}
-        <div className="workspace-content flex-1 overflow-y-auto p-4 space-y-4">
+        <div className="workspace-content flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-4 space-y-4">
           {err && (
             <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-xs flex items-center justify-between">
               <div className="flex items-center gap-2">
